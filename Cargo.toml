@@ -1,0 +1,27 @@
+[workspace]
+members = ["lib"]
+
+[package]
+name = "last-legend-dob-tool"
+version = "0.1.0"
+authors = ["Octavia Togami <octavia.togami@gmail.com>"]
+license = "GPL-3.0-or-later"
+edition = "2021"
+
+[[bin]]
+name = "lldob"
+path = "src/main.rs"
+
+[profile.release]
+lto = true
+
+[dependencies]
+owo-colors = "3"
+supports-color = "1"
+binrw = "0.8"
+itertools = "0.10"
+last-legend-dob = { path = "./lib" }
+
+[dependencies.clap]
+version = "3"
+features = ["derive"]
