@@ -8,7 +8,6 @@ mod command;
 mod uwu_colors;
 
 fn main() -> Result<(), LastLegendError> {
-
     let args = LastLegendDob::parse();
 
     args.subcommand.run(args.global_args)

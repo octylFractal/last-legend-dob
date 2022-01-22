@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::fs::OpenOptions;
-use std::io::{BufReader, Seek, SeekFrom};
+use std::io::{BufReader, Cursor, Read, Seek, SeekFrom};
 use std::path::PathBuf;
 
 use binrw::BinReaderExt;
@@ -12,7 +12,8 @@ use last_legend_dob::data::dat::DatEntryHeader;
 use last_legend_dob::data::index2::{Index2, Index2BinReadArgs};
 use last_legend_dob::error::LastLegendError;
 use last_legend_dob::error::LastLegendError::InvalidSqPath;
-use last_legend_dob::sqpath::SqPathBuf;
+use last_legend_dob::sqpath::{SqPath, SqPathBuf};
+use last_legend_dob::transformers::TransformerImpl;
 
 use crate::command::global_args::GlobalArgs;
 use crate::command::LastLegendCommand;
@@ -26,6 +27,9 @@ pub struct Extract {
     /// Should files be overwritten?
     #[clap(short, long)]
     overwrite: bool,
+    /// Transformers to run
+    #[clap(short, long)]
+    transformers: Vec<TransformerImpl>,
 }
 
 impl LastLegendCommand for Extract {
@@ -72,7 +76,10 @@ impl LastLegendCommand for Extract {
             .map(|(file, index_path)| (file, &indexes[&index_path]))
             .collect();
 
-        for (file, index) in file_to_index.into_iter().sorted_by_key(|(file, _)| file.to_owned()) {
+        for (file, index) in file_to_index
+            .into_iter()
+            .sorted_by_key(|(file, _)| file.to_owned())
+        {
             let entry = index.get_entry(&file)?;
             eprint!(
                 "Extracting {} ({}), in index file {}, in data file {}, at offset {}...",
@@ -87,7 +94,13 @@ impl LastLegendCommand for Extract {
                 entry.data_file_id.errstyle(Style::new().yellow()),
                 format!("0x{:X}", entry.offset_bytes).errstyle(Style::new().yellow()),
             );
-            fallible_copy(output_open_options.clone(), &file, index).map_err(|e| {
+            fallible_copy(
+                &self.transformers,
+                output_open_options.clone(),
+                &file,
+                index,
+            )
+            .map_err(|e| {
                 // Make sure the error prints nicely!
                 eprintln!();
                 e
@@ -100,17 +113,33 @@ impl LastLegendCommand for Extract {
 }
 
 fn fallible_copy(
+    transformers: &[TransformerImpl],
     output_open_options: OpenOptions,
-    file: &SqPathBuf,
+    file: &SqPath,
     index: &Index2,
 ) -> Result<(), LastLegendError> {
-    let mut dat_reader = BufReader::new(index.open_reader(&file)?);
+    let mut dat_reader = BufReader::new(index.open_reader(file)?);
     let original_pos = dat_reader.stream_position()?;
     let header: DatEntryHeader = dat_reader.read_le()?;
     dat_reader.seek(SeekFrom::Start(original_pos))?;
-    let output_path = PathBuf::from(file.as_str());
+
+    let mut content = Vec::with_capacity(header.uncompressed_size.try_into().unwrap());
+    header.read_content(dat_reader)?.read_to_end(&mut content)?;
+    assert_eq!(usize::try_from(header.uncompressed_size).unwrap(), content.len());
+
+    let mut file_name: SqPathBuf = file.to_owned();
+    let mut reader: Box<dyn Read> = Box::new(Cursor::new(content));
+    for t in transformers {
+        let t = t.into_boxed_transformer();
+        if t.can_transform(&file_name) {
+            file_name = t.rename_file(&file_name).into_owned();
+            reader = t.transform(&file_name, reader)?;
+        }
+    }
+
+    let output_path = PathBuf::from(file_name.as_str());
     std::fs::create_dir_all(output_path.parent().unwrap())?;
     let mut output = output_open_options.open(output_path)?;
-    std::io::copy(&mut header.read_content(dat_reader)?, &mut output)?;
+    std::io::copy(&mut reader, &mut output)?;
     Ok(())
 }

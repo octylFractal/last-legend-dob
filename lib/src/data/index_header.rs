@@ -1,5 +1,5 @@
-use binrw::binread;
 use crate::tricks::U32Size;
+use binrw::binread;
 
 /// Gotta keep this in sync with the IndexHeader below.
 const HEADER_SIZE: usize =

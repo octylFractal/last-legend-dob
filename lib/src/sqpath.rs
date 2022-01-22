@@ -1,14 +1,14 @@
 //! Original from https://github.com/CerulanLumina/sqpack, under the Apache 2.0 License.
 //! Slightly modified to use a CRC library rather than an in-crate implementation.
 //! Also modified to produce a index2 hash instead.
-use std::convert::Infallible;
-use std::fmt::{Display, Formatter};
-use std::str::FromStr;
 use std::{
     borrow::Borrow,
     ops::Deref,
     path::{Path, PathBuf},
 };
+use std::convert::Infallible;
+use std::fmt::{Display, Formatter};
+use std::str::FromStr;
 
 /// A representation of a location within the FFXIV data files. This is an
 /// **unsized** type, so it must always be behind a reference such as & or Box.
@@ -57,7 +57,7 @@ impl SqPath {
         let sqpack = sqpack.as_ref();
 
         FileType::parse_from_sqpath(self)
-            .and_then(|file_type| Expansion::parse_from_sqpath(self).map(|exp| (file_type, exp)))
+            .map(|file_type| (file_type, Expansion::parse_from_sqpath(self).0))
             .and_then(|(file_type, expansion)| {
                 SqPackNumber::parse_from_sqpath(self).map(|spn| (file_type, expansion, spn))
             })
@@ -255,22 +255,20 @@ pub enum Expansion {
 }
 
 impl Expansion {
-    /// Parses the expansion implied by the second segment of `sqpath`
+    /// Parses the expansion implied by the second segment of `sqpath`.
     ///
-    /// # Returns
-    /// An option containing the variant corresponding to the game expansion, or `None`
-    /// if the expansion was unrecognized or the path was malformed.
-    pub fn parse_from_sqpath<P: AsRef<SqPath>>(sqpath: P) -> Option<Expansion> {
+    /// The boolean returned indicates if it was actually in the path or not.
+    pub fn parse_from_sqpath<P: AsRef<SqPath>>(sqpath: P) -> (Expansion, bool) {
         let sqpath = sqpath.as_ref();
         let s = sqpath.as_str();
 
-        s.split('/').nth(1).and_then(|exp_str| match exp_str {
-            "ffxiv" => Some(Expansion::FFXIV),
-            "ex1" => Some(Expansion::Heavensward),
-            "ex2" => Some(Expansion::Stormblood),
-            "ex3" => Some(Expansion::Shadowbringers),
-            "ex4" => Some(Expansion::Endwalker),
-            _ => None,
+        s.split('/').nth(1).map_or((Expansion::FFXIV, false), |exp_str| match exp_str {
+            "ffxiv" => (Expansion::FFXIV, true),
+            "ex1" => (Expansion::Heavensward, true),
+            "ex2" => (Expansion::Stormblood, true),
+            "ex3" => (Expansion::Shadowbringers, true),
+            "ex4" => (Expansion::Endwalker, true),
+            _ => (Expansion::FFXIV, false),
         })
     }
 
@@ -323,8 +321,10 @@ impl SqPackNumber {
         let sqpath = sqpath.as_ref();
         let s = sqpath.as_str();
 
+        let (_, has_exp) = Expansion::parse_from_sqpath(sqpath);
+
         s.split('/')
-            .nth(2)
+            .nth(1 + (has_exp as usize))
             .and_then(|filename_str: &str| filename_str.split('_').next())
             .map(|part: &str| {
                 let val = u8::from_str_radix(part, 16).ok().unwrap_or(0);
@@ -619,14 +619,12 @@ mod sqpath_tests {
     #[test]
     fn expansion_parse() {
         let sqpath = SqPath::new("music/ffxiv/BGM_System_Title.scd");
-        let exp = Expansion::parse_from_sqpath(sqpath);
-        assert!(exp.is_some());
-        assert_eq!(exp.unwrap(), Expansion::FFXIV);
+        let exp = Expansion::parse_from_sqpath(sqpath).0;
+        assert_eq!(exp, Expansion::FFXIV);
 
         let sqpath = SqPath::new("music/ex2/dfgdfgsdfg.scd");
-        let exp = Expansion::parse_from_sqpath(sqpath);
-        assert!(exp.is_some());
-        assert_eq!(exp.unwrap(), Expansion::Stormblood);
+        let exp = Expansion::parse_from_sqpath(sqpath).0;
+        assert_eq!(exp, Expansion::Stormblood);
     }
 
     #[test]
@@ -640,32 +638,27 @@ mod sqpath_tests {
     #[test]
     fn expansion_parse_and_as_str_eq() {
         assert_eq!(
-            Expansion::parse_from_sqpath("common/ffxiv/dfgsdfg.asd")
-                .unwrap()
+            Expansion::parse_from_sqpath("common/ffxiv/dfgsdfg.asd").0
                 .as_str(),
             "ffxiv"
         );
         assert_eq!(
-            Expansion::parse_from_sqpath("bgcommon/ex1/asdasd.fgh")
-                .unwrap()
+            Expansion::parse_from_sqpath("bgcommon/ex1/asdasd.fgh").0
                 .as_str(),
             "ex1"
         );
         assert_eq!(
-            Expansion::parse_from_sqpath("bg/ex2/dfhdfgh.hhjg")
-                .unwrap()
+            Expansion::parse_from_sqpath("bg/ex2/dfhdfgh.hhjg").0
                 .as_str(),
             "ex2"
         );
         assert_eq!(
-            Expansion::parse_from_sqpath("cut/ex3/dfghds.yss")
-                .unwrap()
+            Expansion::parse_from_sqpath("cut/ex3/dfghds.yss").0
                 .as_str(),
             "ex3"
         );
         assert_eq!(
-            Expansion::parse_from_sqpath("cut/ex3/165_dfghds.yss")
-                .unwrap()
+            Expansion::parse_from_sqpath("cut/ex3/165_dfghds.yss").0
                 .as_str(),
             "ex3"
         );

@@ -3,6 +3,8 @@ use std::io::{Read, Seek, SeekFrom};
 use binrw::{binread, binrw, BinReaderExt};
 use flate2::read::DeflateDecoder;
 
+use crate::xor::ReadMixer;
+
 // I didn't write a Dat reader, since that's not really needed.
 /// Dat Entry Header reader, find entries using the [Index2].
 #[binread]
@@ -64,17 +66,19 @@ impl<'a, R: Read + Seek> DatEntryContent<'a, R> {
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
 
         assert_eq!(
-            header.decompressed_length, block.decompressed_size.into(),
+            header.decompressed_size(),
+            block.decompressed_size.into(),
             "Block headers disagree on decompressed size!"
         );
-        let mut reader: Box<dyn Read> = if header.is_compressed() {
-            Box::new(DeflateDecoder::new((&mut self.inner).take(header.compressed_length.into())))
+        let base_reader = (&mut self.inner).take(header.source_size().into());
+        let mut reader = if header.is_compressed() {
+            ReadMixer::Wrapped(DeflateDecoder::new(base_reader))
         } else {
-            Box::new((&mut self.inner).take(header.decompressed_length.into()))
+            ReadMixer::Plain(base_reader)
         };
 
         let buffer = self.buf.as_mut().unwrap();
-        let limit = header.decompressed_length as usize;
+        let limit = header.decompressed_size() as usize;
         reader.read_exact(&mut buffer.content[0..limit])?;
         buffer.pos = 0;
         buffer.limit = limit;
@@ -145,7 +149,7 @@ impl Buffer {
 #[br(import { content_type: ContentType, num_blocks: u32 })]
 pub enum DatEntryHeaderBlocks {
     #[br(pre_assert(content_type == ContentType::Binary))]
-    Binary(#[br(args { count: num_blocks as usize })] Vec<BinaryDatEntryHeaderBlock>),
+    Binary(#[br(args { count: num_blocks.try_into().unwrap() })] Vec<BinaryDatEntryHeaderBlock>),
 }
 
 impl DatEntryHeaderBlocks {
@@ -164,14 +168,16 @@ pub struct BinaryDatEntryHeaderBlock {
     pub decompressed_size: u16,
 }
 
+const KNOWN_HEADER_SIZE: u32 = 0x10;
+
 #[binread]
 #[derive(Debug)]
 struct DataBlockHeader {
-    #[br(temp, assert(header_size == 0x10))]
+    #[br(temp, assert(header_size == KNOWN_HEADER_SIZE))]
     header_size: u32,
     #[br(pad_before = 0x4)]
-    pub compressed_length: u32,
-    pub decompressed_length: u32,
+    compressed_length: u32,
+    decompressed_length: u32,
 }
 
 impl DataBlockHeader {
@@ -182,6 +188,25 @@ impl DataBlockHeader {
         }
         assert_eq!(self.compressed_length, NOT_COMPRESSED);
         false
+    }
+
+    pub fn source_size(&self) -> u32 {
+        if self.is_compressed() {
+            // Refer to https://github.com/xivapi/SaintCoinach/blob/f2af100a7d4225f04c2f534bbbc63caf60719766/SaintCoinach/IO/File.cs#L103-L109
+            const BLOCK_PADDING: u32 = 0x80;
+            let padding_check = (self.compressed_length + KNOWN_HEADER_SIZE) % BLOCK_PADDING;
+            if padding_check != 0 {
+                self.compressed_length + (BLOCK_PADDING - padding_check)
+            } else {
+                self.compressed_length
+            }
+        } else {
+            self.decompressed_length
+        }
+    }
+
+    pub fn decompressed_size(&self) -> u32 {
+        self.decompressed_length
     }
 }
 

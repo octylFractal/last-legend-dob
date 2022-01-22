@@ -1,6 +1,6 @@
-//#![deny(warnings)]
-
 pub mod data;
 pub mod error;
-pub mod tricks;
 pub mod sqpath;
+pub mod transformers;
+pub mod tricks;
+pub(crate) mod xor;

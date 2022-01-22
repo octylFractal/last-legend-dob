@@ -13,6 +13,7 @@ name = "lldob"
 path = "src/main.rs"
 
 [profile.release]
+codegen-units = 1
 lto = true
 
 [dependencies]

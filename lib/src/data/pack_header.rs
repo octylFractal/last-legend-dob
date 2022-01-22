@@ -75,12 +75,12 @@ impl SqPackTimestamp {
                 (date / 100) % 100,
                 date % 100,
             )
-                .and_hms(
-                    (time / 1000000) % 100,
-                    (time / 10000) % 100,
-                    (time / 100) % 100,
-                    // Not sure what the bottom 100 values are.
-                ),
+            .and_hms(
+                (time / 1000000) % 100,
+                (time / 10000) % 100,
+                (time / 100) % 100,
+                // Not sure what the bottom 100 values are.
+            ),
         )
     }
 }
