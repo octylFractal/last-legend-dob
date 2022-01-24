@@ -65,8 +65,11 @@ impl Index2 {
                     .to_string_lossy()
                     .replace(".index2", &*format!(".dat{}", entry.data_file_id)),
             );
-        let mut reader = File::open(path)?;
-        reader.seek(SeekFrom::Start(entry.offset_bytes.into()))?;
+        let mut reader =
+            File::open(path).map_err(|e| LastLegendError::Io("Couldn't open reader".into(), e))?;
+        reader
+            .seek(SeekFrom::Start(entry.offset_bytes.into()))
+            .map_err(|e| LastLegendError::Io("Couldn't seek into reader".into(), e))?;
         Ok(reader)
     }
 }

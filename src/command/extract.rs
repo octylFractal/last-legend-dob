@@ -58,7 +58,10 @@ impl LastLegendCommand for Extract {
             .into_iter()
             .unique()
             .map(|index_path| {
-                let mut reader = BufReader::new(std::fs::File::open(index_path)?);
+                let mut reader = BufReader::new(
+                    std::fs::File::open(index_path)
+                        .map_err(|e| LastLegendError::Io("Couldn't open reader".into(), e))?,
+                );
 
                 reader
                     .read_le_args::<Index2>(
@@ -66,7 +69,7 @@ impl LastLegendCommand for Extract {
                             .index_path(index_path.clone())
                             .finalize(),
                     )
-                    .map_err(Into::<LastLegendError>::into)
+                    .map_err(|e| LastLegendError::BinRW("Couldn't read Index2".into(), e))
                     .map(|index2| (index_path.clone(), index2))
             })
             .try_collect()?;
@@ -81,7 +84,7 @@ impl LastLegendCommand for Extract {
             .sorted_by_key(|(file, _)| file.to_owned())
         {
             let entry = index.get_entry(&file)?;
-            eprint!(
+            log::info!(
                 "Extracting {} ({}), in index file {}, in data file {}, at offset {}...",
                 file.errstyle(Style::new().green()),
                 format!("0x{:X}", file.sq_index_hash()).errstyle(Style::new().blue()),
@@ -99,13 +102,8 @@ impl LastLegendCommand for Extract {
                 output_open_options.clone(),
                 &file,
                 index,
-            )
-            .map_err(|e| {
-                // Make sure the error prints nicely!
-                eprintln!();
-                e
-            })?;
-            eprintln!(" done!");
+            )?;
+            log::info!("Done!");
         }
 
         Ok(())
@@ -119,13 +117,26 @@ fn fallible_copy(
     index: &Index2,
 ) -> Result<(), LastLegendError> {
     let mut dat_reader = BufReader::new(index.open_reader(file)?);
-    let original_pos = dat_reader.stream_position()?;
-    let header: DatEntryHeader = dat_reader.read_le()?;
-    dat_reader.seek(SeekFrom::Start(original_pos))?;
+    let original_pos = dat_reader
+        .stream_position()
+        .map_err(|e| LastLegendError::Io("Couldn't read dat_reader stream pos".into(), e))?;
+    let header: DatEntryHeader = dat_reader
+        .read_le()
+        .map_err(|e| LastLegendError::BinRW("Couldn't read DatEntryHeader".into(), e))?;
+    dat_reader
+        .seek(SeekFrom::Start(original_pos))
+        .map_err(|e| LastLegendError::Io("Couldn't seek to original dat_reader pos".into(), e))?;
 
     let mut content = Vec::with_capacity(header.uncompressed_size.try_into().unwrap());
-    header.read_content(dat_reader)?.read_to_end(&mut content)?;
-    assert_eq!(usize::try_from(header.uncompressed_size).unwrap(), content.len());
+    header
+        .read_content(dat_reader)
+        .map_err(|e| LastLegendError::Io("Couldn't read content".into(), e))?
+        .read_to_end(&mut content)
+        .map_err(|e| LastLegendError::Io("Couldn't cache content".into(), e))?;
+    assert_eq!(
+        usize::try_from(header.uncompressed_size).unwrap(),
+        content.len()
+    );
 
     let mut file_name: SqPathBuf = file.to_owned();
     let mut reader: Box<dyn Read> = Box::new(Cursor::new(content));
@@ -138,8 +149,12 @@ fn fallible_copy(
     }
 
     let output_path = PathBuf::from(file_name.as_str());
-    std::fs::create_dir_all(output_path.parent().unwrap())?;
-    let mut output = output_open_options.open(output_path)?;
-    std::io::copy(&mut reader, &mut output)?;
+    std::fs::create_dir_all(output_path.parent().unwrap())
+        .map_err(|e| LastLegendError::Io("Couldn't create output dirs".into(), e))?;
+    let mut output = output_open_options
+        .open(output_path)
+        .map_err(|e| LastLegendError::Io("Couldn't open output".into(), e))?;
+    std::io::copy(&mut reader, &mut output)
+        .map_err(|e| LastLegendError::Io("Couldn't write output".into(), e))?;
     Ok(())
 }

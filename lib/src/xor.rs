@@ -26,9 +26,3 @@ impl<R: Read, F: Fn(usize) -> u8> Read for XorRead<R, F> {
         Ok(read_amt)
     }
 }
-
-#[auto_enums::enum_derive(Read)]
-pub enum ReadMixer<L, R> {
-    Wrapped(L),
-    Plain(R),
-}

@@ -3,7 +3,7 @@ use std::io::{Read, Seek, SeekFrom};
 use binrw::{binread, binrw, BinReaderExt};
 use flate2::read::DeflateDecoder;
 
-use crate::xor::ReadMixer;
+use crate::io_tricks::ReadMixer;
 
 // I didn't write a Dat reader, since that's not really needed.
 /// Dat Entry Header reader, find entries using the [Index2].

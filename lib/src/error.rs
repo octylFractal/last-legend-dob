@@ -10,8 +10,10 @@ pub enum LastLegendError {
     InvalidSqPath(String),
     #[error("Entry '{0}' is not its index file '{1}'")]
     MissingEntryFromIndex(SqPathBuf, PathBuf),
-    #[error("I/O error: {0}")]
-    Io(#[from] std::io::Error),
-    #[error("binrw error: {0}")]
-    BinRW(#[from] binrw::Error),
+    #[error("I/O error: {0}, {1}")]
+    Io(String, #[source] std::io::Error),
+    #[error("binrw error: {0}, {1}")]
+    BinRW(String, #[source] binrw::Error),
+    #[error("FFMPEG failed: {0}")]
+    FFMPEG(String),
 }

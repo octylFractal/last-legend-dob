@@ -5,9 +5,9 @@ use strum::EnumString;
 
 use crate::error::LastLegendError;
 use crate::sqpath::SqPath;
-use crate::transformers::scd_to_ogg::ScdToOgg;
+use crate::transformers::scd_to_flac::ScdToFlac;
 
-pub mod scd_to_ogg;
+pub mod scd_to_flac;
 
 pub trait Transformer<R> {
     /// Can the given [file] be transformed?
@@ -31,7 +31,7 @@ pub enum TransformerImpl {
 impl TransformerImpl {
     pub fn into_boxed_transformer<R: Read>(self) -> Box<dyn Transformer<R>> {
         match self {
-            Self::Scd => Box::new(ScdToOgg),
+            Self::Scd => Box::new(ScdToFlac),
         }
     }
 }

@@ -21,6 +21,8 @@ owo-colors = "3"
 supports-color = "1"
 binrw = "0.8"
 itertools = "0.10"
+log = "0.4"
+env_logger = "0.9"
 last-legend-dob = { path = "./lib" }
 
 [dependencies.clap]

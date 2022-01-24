@@ -1,35 +1,40 @@
 use std::borrow::Cow;
 use std::io::{Cursor, Read, Seek, SeekFrom};
+use std::sync::{Arc, Mutex};
 
 use binrw::{binread, BinRead, BinReaderExt, BinResult, ReadOptions};
 
 use crate::error::LastLegendError;
+use crate::ffmpeg::loop_using_metadata;
+use crate::io_tricks::{ArcWrite, ReadMixer};
 use crate::sqpath::{SqPath, SqPathBuf};
 use crate::transformers::Transformer;
-use crate::xor::{ReadMixer, XorRead};
+use crate::xor::XorRead;
 
-/// Extract a `.ogg` from the `.scd` FFXIV uses.
+/// Extract a `.flac` from the `.scd` FFXIV uses.
 ///
 /// Notes:
 /// - Only extracts one file at a time (obviously).
-/// - Removes the loop using FFMPEG.
+/// - Applies the loop using FFMPEG.
 #[derive(Debug, Default)]
-pub struct ScdToOgg;
+pub struct ScdToFlac;
 
-impl<R: Read> Transformer<R> for ScdToOgg {
+impl<R: Read> Transformer<R> for ScdToFlac {
     fn can_transform(&self, file: &SqPath) -> bool {
         file.as_str().ends_with(".scd")
     }
 
     fn rename_file(&self, file_name: &SqPath) -> Cow<SqPath> {
-        Cow::Owned(SqPathBuf::new(&file_name.as_str().replace(".scd", ".ogg")))
+        Cow::Owned(SqPathBuf::new(&file_name.as_str().replace(".scd", ".flac")))
     }
 
     fn transform(&self, _: &SqPath, mut content: R) -> Result<Box<dyn Read>, LastLegendError> {
         // Re-do the content as a seekable in-memory buffer.
         let content = {
             let mut capture = Vec::<u8>::new();
-            content.read_to_end(&mut capture)?;
+            content
+                .read_to_end(&mut capture)
+                .map_err(|e| LastLegendError::Io("Couldn't cache content".into(), e))?;
             drop(content);
             Cursor::new(capture)
         };
@@ -56,9 +61,11 @@ const XOR_TABLE: &[u8; 256] = &[
     0x83, 0x26, 0xF9, 0x83, 0x2E, 0xFF, 0xE3, 0x16, 0x7D, 0xC0, 0x1E, 0x63, 0x21, 0x07, 0xE3, 0x01,
 ];
 
-impl ScdToOgg {
+impl ScdToFlac {
     fn decode(mut content: Cursor<Vec<u8>>) -> Result<Box<dyn Read>, LastLegendError> {
-        let scd: Scd = content.read_le()?;
+        let scd: Scd = content
+            .read_le()
+            .map_err(|e| LastLegendError::BinRW("Couldn't read SCD".into(), e))?;
         let vorbis_header =
             if scd.ogg_seek_header.encryption_type == EncryptionType::VorbisHeaderXor {
                 ReadMixer::Wrapped(XorRead::new(
@@ -79,7 +86,14 @@ impl ScdToOgg {
         } else {
             ReadMixer::Plain(base)
         };
-        Ok(Box::new(ogg_reader))
+        let final_content = Arc::new(Mutex::new(Vec::new()));
+        loop_using_metadata(ogg_reader, ArcWrite::new(Arc::clone(&final_content)))?;
+        Ok(Box::new(Cursor::new(
+            Arc::try_unwrap(final_content)
+                .unwrap()
+                .into_inner()
+                .expect("lock poisoned"),
+        )))
     }
 }
 
