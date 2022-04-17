@@ -68,7 +68,7 @@ impl Index2 {
         let mut reader =
             File::open(path).map_err(|e| LastLegendError::Io("Couldn't open reader".into(), e))?;
         reader
-            .seek(SeekFrom::Start(entry.offset_bytes.into()))
+            .seek(SeekFrom::Start(entry.offset_bytes))
             .map_err(|e| LastLegendError::Io("Couldn't seek into reader".into(), e))?;
         Ok(reader)
     }
@@ -84,8 +84,8 @@ pub struct Index2Entry {
     pub hash: u32,
     #[br(temp, map = BitArray::new)]
     packed_info: BitArray<u32, Lsb0>,
-    #[br(calc = packed_info[1..4].load_le::<u32>() >> 1)]
+    #[br(calc = packed_info[1..4].load_le::<u32>())]
     pub data_file_id: u32,
-    #[br(calc = packed_info[4..].load_le::<u32>() << 7)]
-    pub offset_bytes: u32,
+    #[br(calc = (u64::from(packed_info[4..].load_le::<u32>())) << 7)]
+    pub offset_bytes: u64,
 }
