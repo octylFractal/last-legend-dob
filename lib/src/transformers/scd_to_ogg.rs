@@ -1,34 +1,46 @@
 use std::borrow::Cow;
 use std::io::{Cursor, Read, Seek, SeekFrom};
-use std::sync::{Arc, Mutex};
+use std::path::Path;
 
 use binrw::{binread, BinRead, BinReaderExt, BinResult, ReadOptions};
 
 use crate::error::LastLegendError;
-use crate::ffmpeg::loop_using_metadata;
-use crate::io_tricks::{ArcWrite, ReadMixer};
+use crate::io_tricks::ReadMixer;
 use crate::sqpath::{SqPath, SqPathBuf};
-use crate::transformers::Transformer;
+use crate::transformers::{Transformer, TransformerForFile};
 use crate::xor::XorRead;
 
-/// Extract a `.flac` from the `.scd` FFXIV uses.
-///
-/// Notes:
-/// - Only extracts one file at a time (obviously).
-/// - Applies the loop using FFMPEG.
+/// Extract a `.ogg` from the `.scd` FFXIV uses.
 #[derive(Debug, Default)]
-pub struct ScdToFlac;
+pub struct ScdToOgg;
 
-impl<R: Read> Transformer<R> for ScdToFlac {
-    fn can_transform(&self, file: &SqPath) -> bool {
-        file.as_str().ends_with(".scd")
+impl<R: Read> Transformer<R> for ScdToOgg {
+    type ForFile = ScdToOggForFile;
+
+    fn maybe_for(&self, file: SqPathBuf) -> Option<Self::ForFile> {
+        file.as_str()
+            .ends_with(".scd")
+            .then(|| ScdToOggForFile { file })
+    }
+}
+
+#[derive(Debug)]
+pub struct ScdToOggForFile {
+    file: SqPathBuf,
+}
+
+impl<R: Read> TransformerForFile<R> for ScdToOggForFile {
+    fn renamed_file(&self) -> Cow<SqPath> {
+        Cow::Owned(SqPathBuf::new(
+            Path::new(self.file.as_str())
+                .with_extension("ogg")
+                .as_os_str()
+                .to_str()
+                .unwrap(),
+        ))
     }
 
-    fn rename_file(&self, file_name: &SqPath) -> Cow<SqPath> {
-        Cow::Owned(SqPathBuf::new(&file_name.as_str().replace(".scd", ".flac")))
-    }
-
-    fn transform(&self, _: &SqPath, mut content: R) -> Result<Box<dyn Read>, LastLegendError> {
+    fn transform(&self, mut content: R) -> Result<Box<dyn Read>, LastLegendError> {
         // Re-do the content as a seekable in-memory buffer.
         let content = {
             let mut capture = Vec::<u8>::new();
@@ -61,7 +73,7 @@ const XOR_TABLE: &[u8; 256] = &[
     0x83, 0x26, 0xF9, 0x83, 0x2E, 0xFF, 0xE3, 0x16, 0x7D, 0xC0, 0x1E, 0x63, 0x21, 0x07, 0xE3, 0x01,
 ];
 
-impl ScdToFlac {
+impl ScdToOggForFile {
     fn decode(mut content: Cursor<Vec<u8>>) -> Result<Box<dyn Read>, LastLegendError> {
         let scd: Scd = content
             .read_le()
@@ -76,24 +88,21 @@ impl ScdToFlac {
                 ReadMixer::Plain(Cursor::new(scd.ogg_seek_header.vorbis_header))
             };
         let base = vorbis_header.chain(content.take(scd.sound_entry_header.data_size.into()));
-        let ogg_reader = if scd.ogg_seek_header.encryption_type == EncryptionType::InternalTableXor
-        {
-            let static_xor = (scd.sound_entry_header.data_size & 0x7F) as u8;
-            let table_off = (scd.sound_entry_header.data_size & 0x3F) as u8;
-            ReadMixer::Wrapped(XorRead::new(base, move |index| {
-                XOR_TABLE[(usize::from(table_off) + index) & 0xFF] ^ static_xor
-            }))
-        } else {
-            ReadMixer::Plain(base)
-        };
-        let final_content = Arc::new(Mutex::new(Vec::new()));
-        loop_using_metadata(ogg_reader, ArcWrite::new(Arc::clone(&final_content)))?;
-        Ok(Box::new(Cursor::new(
-            Arc::try_unwrap(final_content)
-                .unwrap()
-                .into_inner()
-                .expect("lock poisoned"),
-        )))
+        let mut ogg_reader =
+            if scd.ogg_seek_header.encryption_type == EncryptionType::InternalTableXor {
+                let static_xor = (scd.sound_entry_header.data_size & 0x7F) as u8;
+                let table_off = (scd.sound_entry_header.data_size & 0x3F) as u8;
+                ReadMixer::Wrapped(XorRead::new(base, move |index| {
+                    XOR_TABLE[(usize::from(table_off) + index) & 0xFF] ^ static_xor
+                }))
+            } else {
+                ReadMixer::Plain(base)
+            };
+        let mut final_content = Vec::new();
+        ogg_reader
+            .read_to_end(&mut final_content)
+            .map_err(|e| LastLegendError::Io("Couldn't read OGG".into(), e))?;
+        Ok(Box::new(Cursor::new(final_content)))
     }
 }
 

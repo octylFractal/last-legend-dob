@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::Seek;
-use std::path::PathBuf;
+use std::io::{BufReader, Seek};
+use std::path::{Path, PathBuf};
 
-use binrw::{binread, helpers::count_with, io::SeekFrom};
+use binrw::{binread, helpers::count_with, io::SeekFrom, BinReaderExt};
 use bitvec::prelude::*;
 
 use crate::data::index_header::IndexHeader;
@@ -34,6 +34,35 @@ pub struct Index2 {
 }
 
 impl Index2 {
+    pub fn load<P: AsRef<Path>, F: AsRef<SqPath>>(
+        repo_path: P,
+        file: F,
+    ) -> Result<Self, LastLegendError> {
+        let repo_path = repo_path.as_ref();
+        let file = file.as_ref();
+        let index_path = file
+            .sqpack_index_path(repo_path)
+            .ok_or_else(|| LastLegendError::InvalidSqPath(file.as_str().to_string()))?;
+
+        Self::load_from_path(index_path)
+    }
+
+    pub fn load_from_path<P: AsRef<Path>>(index_path: P) -> Result<Self, LastLegendError> {
+        let index_path = index_path.as_ref();
+        let mut reader = BufReader::new(
+            std::fs::File::open(index_path)
+                .map_err(|e| LastLegendError::Io("Couldn't open reader".into(), e))?,
+        );
+
+        reader
+            .read_le_args::<Index2>(
+                Index2BinReadArgs::builder()
+                    .index_path(index_path.to_path_buf())
+                    .finalize(),
+            )
+            .map_err(|e| LastLegendError::BinRW("Couldn't read Index2".into(), e))
+    }
+
     /// Get an entry for a [file].
     pub fn get_entry<F: AsRef<SqPath>>(&self, file: F) -> Result<&Index2Entry, LastLegendError> {
         let file = file.as_ref();

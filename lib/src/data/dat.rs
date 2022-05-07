@@ -38,6 +38,18 @@ impl DatEntryHeader {
             buf: None,
         })
     }
+
+    /// Given a [reader], positioned at the start of the header, read the content to a [Vec].
+    pub fn read_content_to_vec<R: Read + Seek>(&self, reader: R) -> std::io::Result<Vec<u8>> {
+        let mut content = Vec::with_capacity(self.uncompressed_size.try_into().unwrap());
+        self.read_content(reader)?.read_to_end(&mut content)?;
+        assert_eq!(
+            usize::try_from(self.uncompressed_size).unwrap(),
+            content.len()
+        );
+
+        Ok(content)
+    }
 }
 
 pub struct DatEntryContent<'a, R> {
@@ -119,6 +131,8 @@ impl<'a, R: Read + Seek> Read for DatEntryContent<'a, R> {
         Ok(len)
     }
 }
+
+// TODO: Implement Seek?
 
 struct Buffer {
     pub content: Box<[u8]>,
