@@ -50,7 +50,7 @@ impl Index2 {
     pub fn load_from_path<P: AsRef<Path>>(index_path: P) -> Result<Self, LastLegendError> {
         let index_path = index_path.as_ref();
         let mut reader = BufReader::new(
-            std::fs::File::open(index_path)
+            File::open(index_path)
                 .map_err(|e| LastLegendError::Io("Couldn't open reader".into(), e))?,
         );
 
@@ -61,6 +61,10 @@ impl Index2 {
                     .finalize(),
             )
             .map_err(|e| LastLegendError::BinRW("Couldn't read Index2".into(), e))
+    }
+
+    pub fn entries(&self) -> impl Iterator<Item = &Index2Entry> {
+        self.entries.values()
     }
 
     /// Get an entry for a [file].
@@ -74,15 +78,10 @@ impl Index2 {
     /// Given the [file] you want, open a reader and position it so it's ready to read a
     /// [DatEntryHeader] for the file.
     pub fn open_reader<F: AsRef<SqPath>>(&self, file: F) -> Result<File, LastLegendError> {
-        let file = file.as_ref();
-        self.shared_open_reader(file)
+        self.open_reader_for_entry(self.get_entry(file)?)
     }
 
-    // Non-generic version for optimization.
-    fn shared_open_reader(&self, file: &SqPath) -> Result<File, LastLegendError> {
-        let entry = self.entries.get(&file.sq_index_hash()).ok_or_else(|| {
-            LastLegendError::MissingEntryFromIndex(file.to_owned(), self.index_path.clone())
-        })?;
+    pub fn open_reader_for_entry(&self, entry: &Index2Entry) -> Result<File, LastLegendError> {
         let path = self
             .index_path
             .parent()
@@ -92,7 +91,7 @@ impl Index2 {
                     .file_name()
                     .expect("index path must have a file name")
                     .to_string_lossy()
-                    .replace(".index2", &*format!(".dat{}", entry.data_file_id)),
+                    .replace(".index2", &format!(".dat{}", entry.data_file_id)),
             );
         let mut reader =
             File::open(path).map_err(|e| LastLegendError::Io("Couldn't open reader".into(), e))?;

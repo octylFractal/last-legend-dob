@@ -11,11 +11,11 @@ const ROW_OFFSET_SIZE: u32 = 8;
 #[br(big, magic = b"EXDF\0\x02")]
 pub struct PageHeader {
     #[br(temp)]
-    unknown_1: [u8; 2],
+    _unknown_1: [u8; 2],
     #[br(temp)]
     offset_table_size: u32,
     #[br(temp)]
-    unknown_2: [u8; 20],
+    _unknown_2: [u8; 20],
     #[br(args { count: (offset_table_size / ROW_OFFSET_SIZE).try_into().unwrap() })]
     offset_table: Vec<RowOffset>,
 }

@@ -8,7 +8,7 @@ use unicase::Ascii;
 
 use crate::data::repo::Repository;
 use crate::error::LastLegendError;
-use crate::simple_task::{format_index_entry_for_console, read_entry_header};
+use crate::simple_task::{format_index_entry_for_console, read_file_entry_header};
 use crate::surpass::page::{PageHeader, RowBufferIter};
 use crate::surpass::serde_row::from_row;
 use crate::surpass::sheet_info::{Language, SheetInfo};
@@ -27,7 +27,7 @@ impl Collection {
         let index = repo
             .get_index_for(MAGIC_ROOT)
             .map_err(|e| e.add_context("Failed to read index for collection"))?;
-        let (header, dat_reader) = read_entry_header(&index, MAGIC_ROOT)
+        let (header, dat_reader) = read_file_entry_header(&index, MAGIC_ROOT)
             .map_err(|e| e.add_context("Failed to open data reader for collection"))?;
         let reader = header
             .read_content(dat_reader)
@@ -78,14 +78,14 @@ impl Collection {
         log::debug!(
             "Loading sheet info {}",
             format_index_entry_for_console(
-                &self.repo.repo_path(),
+                self.repo.repo_path(),
                 &index,
                 index.get_entry(&file_name)?,
                 &file_name
             )
         );
 
-        let (header, dat_reader) = read_entry_header(&index, &file_name)
+        let (header, dat_reader) = read_file_entry_header(&index, &file_name)
             .map_err(|e| e.add_context("Failed to open data reader for collection"))?;
         let content = header
             .read_content_to_vec(dat_reader)
@@ -141,14 +141,14 @@ impl SheetIter {
         log::debug!(
             "Loading sheet page {}",
             format_index_entry_for_console(
-                &self.repo.repo_path(),
+                self.repo.repo_path(),
                 &index,
                 index.get_entry(&file_name)?,
                 &file_name
             )
         );
 
-        let (header, dat_reader) = read_entry_header(&index, &file_name)
+        let (header, dat_reader) = read_file_entry_header(&index, &file_name)
             .map_err(|e| e.add_context("Failed to open data reader for sheet page"))?;
         let content = header
             .read_content_to_vec(dat_reader)

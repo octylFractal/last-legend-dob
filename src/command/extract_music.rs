@@ -15,9 +15,9 @@ use last_legend_dob::surpass::known_rows::orchestrion_path::OrchestrionPath;
 use last_legend_dob::transformers::TransformerImpl;
 use last_legend_dob::uwu_colors::ErrStyle;
 
+use crate::command::{LastLegendCommand, make_open_options};
 use crate::command::extract_common::extract_file;
 use crate::command::global_args::GlobalArgs;
-use crate::command::{make_open_options, LastLegendCommand};
 
 /// Extract all music files from the repository.
 ///
@@ -125,7 +125,16 @@ impl MusicSource {
                             };
                             (!row.name.is_empty()).then(|| {
                                 let orch_path = String::from(&orch_paths[i]);
-                                let extract_name = Path::new(&orch_path).with_file_name(row.name);
+                                let safe_file_name = row.name.chars()
+                                    .map(|c| {
+                                        if "<>:\"/\\|?*".contains(c) {
+                                            '_'
+                                        } else {
+                                            c
+                                        }
+                                    })
+                                    .collect::<String>();
+                                let extract_name = Path::new(&orch_path).with_file_name(format!("{:03} - {}", i, safe_file_name));
                                 Ok((extract_name.into_os_string(), orch_path))
                             })
                         }),

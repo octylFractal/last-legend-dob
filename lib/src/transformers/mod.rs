@@ -5,11 +5,11 @@ use strum::EnumString;
 
 use crate::error::LastLegendError;
 use crate::sqpath::{SqPath, SqPathBuf};
-use crate::transformers::loop_ogg::LoopOgg;
-use crate::transformers::scd_to_ogg::ScdToOgg;
+use crate::transformers::loop_flac::LoopFlac;
+use crate::transformers::scd_to_flac::ScdToFlac;
 
-mod loop_ogg;
-mod scd_to_ogg;
+mod loop_flac;
+mod scd_to_flac;
 
 pub trait Transformer<R> {
     type ForFile: TransformerForFile<R>;
@@ -29,8 +29,8 @@ pub trait TransformerForFile<R> {
 #[derive(EnumString, Copy, Clone, Debug)]
 #[strum(serialize_all = "snake_case")]
 pub enum TransformerImpl {
-    ScdToOgg,
-    LoopOgg,
+    ScdToFlac,
+    LoopFlac,
 }
 
 impl<R: Read> Transformer<R> for TransformerImpl {
@@ -38,9 +38,9 @@ impl<R: Read> Transformer<R> for TransformerImpl {
 
     fn maybe_for(&self, file: SqPathBuf) -> Option<Self::ForFile> {
         match self {
-            Self::ScdToOgg => <ScdToOgg as Transformer<R>>::maybe_for(&ScdToOgg, file)
+            Self::ScdToFlac => <ScdToFlac as Transformer<R>>::maybe_for(&ScdToFlac, file)
                 .map(|e| Box::new(e) as Self::ForFile),
-            Self::LoopOgg => <LoopOgg as Transformer<R>>::maybe_for(&LoopOgg, file)
+            Self::LoopFlac => <LoopFlac as Transformer<R>>::maybe_for(&LoopFlac, file)
                 .map(|e| Box::new(e) as Self::ForFile),
         }
     }

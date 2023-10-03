@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -38,23 +39,30 @@ impl Repository {
         let index_path = file_name
             .sqpack_index_path(&self.repo_path)
             .ok_or_else(|| LastLegendError::InvalidSqPath(file_name.as_str().to_string()))?;
+
+        self.load_index_file(index_path.into())
+    }
+
+    pub fn load_index_file(&self, index_path: Cow<Path>) -> Result<Arc<Index2>, LastLegendError> {
         // Pass one: check with read lock.
         {
             let state = self.state.read();
-            if let Some(v) = state.indexes.get(&index_path) {
+            if let Some(v) = state.indexes.get(index_path.as_ref()) {
                 return Ok(Arc::clone(v));
             }
         }
 
         // Pass two: try again with upgradable read lock.
         let state = self.state.upgradable_read();
-        if let Some(v) = state.indexes.get(&index_path) {
+        if let Some(v) = state.indexes.get(index_path.as_ref()) {
             return Ok(Arc::clone(v));
         }
         // Pass three: load it under upgradable read lock, and then write lock to save it.
         let index2 = Arc::new(Index2::load_from_path(&index_path)?);
         let mut state = RwLockUpgradableReadGuard::upgrade(state);
-        state.indexes.insert(index_path, Arc::clone(&index2));
+        state
+            .indexes
+            .insert(index_path.into_owned(), Arc::clone(&index2));
         Ok(index2)
     }
 }

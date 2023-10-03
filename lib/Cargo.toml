@@ -6,24 +6,24 @@ license = "GPL-3.0-or-later"
 edition = "2021"
 
 [dependencies]
-thiserror = "1.0.30"
-binrw = { git = "https://github.com/jam1garner/binrw", rev = "457bdbca3254c842ed9a1d15a78a2bfb02289040" }
-bitvec = "1.0.0"
-chrono = "0.4.19"
-crc = "2.1.0"
-flate2 = "1.0.23"
-auto_enums = "0.7.12"
-tempfile = "3.3.0"
-log = "0.4.16"
-unicase = "2.6.0"
-owo-colors = "3.3.0"
-supports-color = "1.3.0"
-parking_lot = "0.12.0"
+thiserror = "1.0.49"
+binrw = "0.12.0"
+bitvec = "1.0.1"
+chrono = "0.4.31"
+crc = "3.0.1"
+flate2 = "1.0.27"
+auto_enums = "0.8.2"
+tempfile = "3.8.0"
+log = "0.4.20"
+unicase = "2.7.0"
+owo-colors = "3.5.0"
+supports-color = "2.1.0"
+parking_lot = "0.12.1"
 
 [dependencies.strum]
-version = "0.24.0"
+version = "0.25.0"
 features = ["derive"]
 
 [dependencies.serde]
-version = "1.0.136"
+version = "1.0.188"
 features = ["derive"]

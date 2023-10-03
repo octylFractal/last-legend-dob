@@ -17,17 +17,17 @@ incremental = true
 lto = "thin"
 
 [dependencies]
-owo-colors = "3.3.0"
-supports-color = "1.3.0"
-log = "0.4.16"
-env_logger = "0.9.0"
-rayon = "1.5.2"
+owo-colors = "3.5.0"
+supports-color = "2.1.0"
+log = "0.4.20"
+env_logger = "0.10.0"
+rayon = "1.8.0"
 last-legend-dob = { path = "./lib" }
 
 [dependencies.clap]
-version = "3.1.12"
+version = "4.4.6"
 features = ["derive"]
 
 [dependencies.strum]
-version = "0.24.0"
+version = "0.25.0"
 features = ["derive"]

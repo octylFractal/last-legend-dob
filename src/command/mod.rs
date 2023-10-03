@@ -9,6 +9,7 @@ use last_legend_dob::sqpath::SqPathBuf;
 use crate::command::global_args::GlobalArgs;
 
 mod extract;
+mod extract_all;
 pub(crate) mod extract_common;
 mod extract_music;
 mod global_args;
@@ -30,6 +31,7 @@ pub struct LastLegendDob {
 #[derive(Subcommand, Debug)]
 pub enum LLDCommand {
     Extract(extract::Extract),
+    ExtractAll(extract_all::ExtractAll),
     ExtractMusic(extract_music::ExtractMusic),
     /// Get the hash of the path, used to retrieve data from the index.
     HashPath {
@@ -42,9 +44,13 @@ impl LastLegendCommand for LLDCommand {
     fn run(self, global_args: GlobalArgs) -> Result<(), LastLegendError> {
         match self {
             Self::Extract(v) => v.run(global_args),
+            Self::ExtractAll(v) => v.run(global_args),
             Self::ExtractMusic(v) => v.run(global_args),
             Self::HashPath { path } => {
-                log::info!("Hash of path is {}", format_index_hash_for_console(path));
+                log::info!(
+                    "Hash of path is {}",
+                    format_index_hash_for_console(path.sq_index_hash())
+                );
                 Ok(())
             }
         }

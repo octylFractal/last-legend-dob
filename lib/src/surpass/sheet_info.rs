@@ -1,15 +1,17 @@
-use crate::error::LastLegendError;
-use binrw::helpers::count_with;
-use binrw::{binread, BinRead, BinReaderExt, BinResult, NullString, ReadOptions};
 use std::io::{Read, Seek, SeekFrom};
 use std::ops::Range;
+
+use binrw::helpers::count_with;
+use binrw::{binread, BinRead, BinReaderExt, BinResult, NullString};
+
+use crate::error::LastLegendError;
 
 #[binread]
 #[derive(Debug, Clone)]
 #[br(big, magic = b"EXHF")]
 pub struct SheetInfo {
     #[br(temp)]
-    unknown_1: [u8; 2],
+    _unknown_1: [u8; 2],
     pub fixed_row_size: u16,
     #[br(temp)]
     column_count: u16,
@@ -18,10 +20,10 @@ pub struct SheetInfo {
     #[br(temp)]
     language_count: u16,
     #[br(temp)]
-    unknown_3: [u8; 2],
+    _unknown_3: [u8; 2],
     pub variant: Variant,
     #[br(temp)]
-    unknown_4: [u8; 14],
+    _unknown_4: [u8; 14],
     #[br(args { count: dbg!(column_count).try_into().unwrap() })]
     pub columns: Vec<Column>,
     #[br(parse_with = count_with(
@@ -69,7 +71,9 @@ impl Column {
                 let nstr = reader
                     .read_be::<NullString>()
                     .map_err(|e| LastLegendError::BinRW("Failed to read str".into(), e))?;
-                Ok(DataValue::String(nstr.into_string()))
+                Ok(DataValue::String(
+                    nstr.try_into().expect("Failed to convert string"),
+                ))
             }
             DataType::Bool => reader
                 .read_be::<u8>()
@@ -164,11 +168,8 @@ pub enum DataValue {
     // Packed bools are Bool
 }
 
-fn range_parser<R: Read + Seek>(
-    reader: &mut R,
-    ro: &ReadOptions,
-    _args: (),
-) -> BinResult<Range<u32>> {
+#[binrw::parser(reader, endian)]
+fn range_parser(_: ()) -> BinResult<Range<u32>> {
     #[binread]
     #[derive(Debug)]
     struct FileRange {
@@ -176,8 +177,7 @@ fn range_parser<R: Read + Seek>(
         len: u32,
     }
 
-    let mut res: FileRange = FileRange::read_options(reader, ro, ())?;
-    res.after_parse(reader, ro, ())?;
+    let res: FileRange = FileRange::read_options(reader, endian, ())?;
     Ok(Range {
         start: res.min,
         end: res.min + res.len,

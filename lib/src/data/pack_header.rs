@@ -1,7 +1,7 @@
 use std::fmt::{Debug, Formatter};
 use std::io::{Read, Seek, Write};
 
-use binrw::{binrw, BinRead, BinResult, BinWrite, ReadOptions, WriteOptions};
+use binrw::{binrw, BinRead, BinResult, BinWrite, Endian};
 use chrono::{DateTime, Datelike, TimeZone, Timelike, Utc};
 
 use crate::tricks::U32Size;
@@ -70,17 +70,15 @@ impl SqPackTimestamp {
         }
 
         Self::Present(
-            Utc.ymd(
+            Utc.with_ymd_and_hms(
                 ((date / 10000) % 10000) as i32,
                 (date / 100) % 100,
                 date % 100,
-            )
-            .and_hms(
                 (time / 1000000) % 100,
                 (time / 10000) % 100,
                 (time / 100) % 100,
-                // Not sure what the bottom 100 values are.
-            ),
+            )
+            .unwrap(),
         )
     }
 }
@@ -95,43 +93,38 @@ impl Debug for SqPackTimestamp {
 }
 
 impl BinRead for SqPackTimestamp {
-    type Args = ();
+    type Args<'a> = ();
 
     fn read_options<R: Read + Seek>(
         reader: &mut R,
-        options: &ReadOptions,
-        _: Self::Args,
+        endian: Endian,
+        _: Self::Args<'_>,
     ) -> BinResult<Self> {
-        let date = u32::read_options(reader, options, ())?;
-        let time = u32::read_options(reader, options, ())?;
+        let date = u32::read_options(reader, endian, ())?;
+        let time = u32::read_options(reader, endian, ())?;
 
         Ok(Self::from_raw(date, time))
     }
 }
 
 impl BinWrite for SqPackTimestamp {
-    type Args = ();
+    type Args<'a> = ();
 
     fn write_options<W: Write + Seek>(
         &self,
         writer: &mut W,
-        options: &WriteOptions,
-        _: Self::Args,
+        endian: Endian,
+        _: Self::Args<'_>,
     ) -> BinResult<()> {
         let (date_u32, time_u32) = match self {
-            Self::Present(d) => {
-                let date = d.date();
-                let time = d.time();
-
-                (
-                    (date.year() as u32) * 10000 + date.month() * 100 + date.day(),
-                    time.hour() * 1000000 + time.minute() * 10000 + time.second() * 100,
-                )
-            }
+            Self::Present(d) => (
+                (d.year() as u32) * 10000 + d.month() * 100 + d.day(),
+                d.hour() * 1000000 + d.minute() * 10000 + d.second() * 100,
+            ),
             Self::Missing => (0, 0),
         };
-        date_u32.write_options(writer, options, ())?;
-        time_u32.write_options(writer, options, ())?;
+        date_u32.write_options(writer, endian, ())?;
+        time_u32.write_options(writer, endian, ())?;
         Ok(())
     }
 }

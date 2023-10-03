@@ -24,5 +24,5 @@ pub struct IndexHeader {
     pub index_data_size: U32Size,
     // Skip the padding bytes
     #[brw(temp, pad_before = size.0 - HEADER_SIZE)]
-    padding: (),
+    _padding: (),
 }

@@ -6,6 +6,6 @@ pub struct GlobalArgs {
     /// Path the the SqPack you wish to examine.
     pub repository: PathBuf,
     /// Verbosity level, repeat to increase.
-    #[clap(short, long, parse(from_occurrences))]
-    pub verbose: usize,
+    #[clap(short, long, action = clap::ArgAction::Count)]
+    pub verbose: u8,
 }

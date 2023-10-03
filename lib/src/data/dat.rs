@@ -16,7 +16,7 @@ pub struct DatEntryHeader {
     content_type: ContentType,
     pub uncompressed_size: u32,
     #[br(temp)]
-    unknown: u32,
+    _unknown: u32,
     pub block_size: u32,
     pub num_blocks: u32,
     #[br(args { content_type, num_blocks })]
@@ -101,7 +101,7 @@ impl<'a, R: Read + Seek> DatEntryContent<'a, R> {
 
 impl<'a, R: Read + Seek> Read for DatEntryContent<'a, R> {
     fn read(&mut self, output_buf: &mut [u8]) -> std::io::Result<usize> {
-        let mut buf = match &mut self.buf {
+        let buf = match &mut self.buf {
             Some(buf) if buf.can_read() => buf,
             _ => {
                 let next_block = match self.block_iter.next() {

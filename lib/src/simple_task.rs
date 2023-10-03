@@ -12,11 +12,20 @@ use crate::sqpath::{SqPath, SqPathBuf};
 use crate::transformers::{Transformer, TransformerForFile, TransformerImpl};
 use crate::uwu_colors::{get_errstyle, ErrStyle};
 
-pub fn read_entry_header<F: AsRef<SqPath>>(
+pub fn read_file_entry_header<F: AsRef<SqPath>>(
     index: &Index2,
     file: F,
 ) -> Result<(DatEntryHeader, BufReader<File>), LastLegendError> {
-    let mut dat_reader = BufReader::new(index.open_reader(file)?);
+    let entry = index.get_entry(file)?;
+
+    read_entry_header(index, entry)
+}
+
+fn read_entry_header(
+    index: &Index2,
+    entry: &Index2Entry,
+) -> Result<(DatEntryHeader, BufReader<File>), LastLegendError> {
+    let mut dat_reader = BufReader::new(index.open_reader_for_entry(entry)?);
     let original_pos = dat_reader
         .stream_position()
         .map_err(|e| LastLegendError::Io("Couldn't read dat_reader stream pos".into(), e))?;
@@ -31,19 +40,18 @@ pub fn read_entry_header<F: AsRef<SqPath>>(
 }
 
 /// Create a reader for the data after applying transforms.
-pub fn create_transformed_reader<F: AsRef<SqPath>>(
+pub fn create_transformed_reader(
     index: &Index2,
-    file: F,
+    entry: &Index2Entry,
+    mut file_name: SqPathBuf,
     transformers: &[TransformerImpl],
 ) -> Result<TransformedReader, LastLegendError> {
-    let file = file.as_ref();
-    let (header, dat_reader) = read_entry_header(index, file)?;
+    let (header, dat_reader) = read_entry_header(index, entry)?;
 
     let content = header
         .read_content_to_vec(dat_reader)
         .map_err(|e| LastLegendError::Io("Failed to read dat content".into(), e))?;
 
-    let mut file_name: SqPathBuf = file.to_owned();
     let mut reader: Box<dyn Read> = Box::new(Cursor::new(content));
     for t in transformers {
         if let Some(tf) = t.maybe_for(file_name.clone()) {
@@ -71,7 +79,7 @@ pub fn format_index_entry_for_console<P: AsRef<Path>, F: AsRef<SqPath>>(
     format!(
         "{} ({}), in index file {}, in data file {}, at offset {}",
         file.errstyle(Style::new().green()),
-        format_index_hash_for_console(file),
+        format_index_hash_for_console(entry.hash),
         index
             .index_path
             .strip_prefix(repo_path)
@@ -83,6 +91,6 @@ pub fn format_index_entry_for_console<P: AsRef<Path>, F: AsRef<SqPath>>(
     )
 }
 
-pub fn format_index_hash_for_console<F: AsRef<SqPath>>(file: F) -> Styled<String> {
-    get_errstyle(Style::new().blue()).style(format!("0x{:X}", file.as_ref().sq_index_hash()))
+pub fn format_index_hash_for_console(hash: u32) -> Styled<String> {
+    get_errstyle(Style::new().blue()).style(format!("0x{:X}", hash))
 }

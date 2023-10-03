@@ -4,56 +4,31 @@ use std::ops::{Deref, DerefMut};
 use std::process::{Child, Command, Output, Stdio};
 
 use crate::error::LastLegendError;
-use crate::tricks::parse_command_args;
+use crate::tricks::ArgBuilder;
 
-/// Loop an OGG sing the Loopstart and Loopend metadata.
+const GENERAL_FFMPEG_INSTRUCTIONS: [&str; 1] = ["-hide_banner"];
+
+/// Loop a FLAC using the Loopstart and Loopend metadata.
 pub fn loop_using_metadata(
     mut reader: impl Read,
     mut output: impl Write,
 ) -> Result<(), LastLegendError> {
-    const GENERAL_FFMPEG_INSTRUCTIONS: &str = "-hide_banner";
-
-    let original_cache_file = tempfile::NamedTempFile::new()
+    let mut original_cache_file = tempfile::NamedTempFile::new()
         .map_err(|e| LastLegendError::Io("Couldn't create temporary cache file".into(), e))?;
     let looped_cache_file = tempfile::NamedTempFile::new()
         .map_err(|e| LastLegendError::Io("Couldn't create temporary loop cache file".into(), e))?;
-    // Run FFMPEG command to fix the OGG.
-    let ffmpeg_args = parse_command_args(&*format!(
-        "{general} {loglevel} -y -i pipe: -map_metadata 0:s:a:0 -f flac {file}",
-        general = GENERAL_FFMPEG_INSTRUCTIONS,
-        loglevel = get_ffmpeg_loglevel(),
-        file = original_cache_file.path().display(),
-    ));
-    log::debug!("Running ffmpeg {:?}", ffmpeg_args);
-    let mut child = ChildDropGuard(
-        Command::new("ffmpeg")
-            .args(ffmpeg_args)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::null())
-            .spawn()
-            .map_err(|e| LastLegendError::Io("Couldn't spawn ffmpeg".into(), e))?,
-    );
-    let push_r = std::io::copy(&mut reader, &mut child.stdin.take().unwrap());
-    let exit = child
-        .0
-        .wait()
-        .map_err(|e| LastLegendError::Io("Couldn't wait for ffmpeg".into(), e))?;
-    check_exit(&Output {
-        status: exit,
-        stderr: Vec::new(),
-        stdout: Vec::new(),
-    })?;
-    // Throw copy errors after child error,
-    // since if the child crashes its error is more meaningful.
-    push_r.map_err(|e| LastLegendError::Io("Couldn't pull data from ffmpeg".into(), e))?;
+    // dump the reader to a file for probing
+    std::io::copy(&mut reader, original_cache_file.as_file_mut())
+        .map_err(|e| LastLegendError::Io("Couldn't copy to original cache file".into(), e))?;
 
     // Run FFMPEG command to tell me what the loop points are
-    let probe_args = parse_command_args(&*format!(
-        "{general} {loglevel} -i {file} -show_entries format_tags -of compact=p=0:nk=1",
-        general = GENERAL_FFMPEG_INSTRUCTIONS,
-        loglevel = get_ffmpeg_loglevel(),
-        file = original_cache_file.path().display(),
-    ));
+    let probe_args = ArgBuilder::new()
+        .add_all(GENERAL_FFMPEG_INSTRUCTIONS)
+        .add_all(get_ffmpeg_loglevel())
+        .add_kv("-i", original_cache_file.path())
+        .add_kv("-show_entries", "format_tags")
+        .add_kv("-of", "compact=p=0:nk=1")
+        .into_vec();
     log::debug!("Running ffprobe {:?}", probe_args);
     let audio_probe_output = Command::new("ffprobe")
         .args(probe_args)
@@ -107,15 +82,22 @@ pub fn loop_using_metadata(
             })?;
         }
         _ => {
-            let ffmpeg_args = parse_command_args(&*format!(
-                "{general} {loglevel} -y -i {file} -af aloop=loop=1:start={loop_start}:size={loop_size} -f flac {out_file}",
-                general = GENERAL_FFMPEG_INSTRUCTIONS,
-                loglevel = get_ffmpeg_loglevel(),
-                file = original_cache_file.path().display(),
-                loop_start = loop_start,
-                loop_size = loop_end - loop_start,
-                out_file = looped_cache_file.path().display(),
-            ));
+            let ffmpeg_args = ArgBuilder::new()
+                .add_all(GENERAL_FFMPEG_INSTRUCTIONS)
+                .add_all(get_ffmpeg_loglevel())
+                .add("-y")
+                .add_kv("-i", original_cache_file.path())
+                .add_kv(
+                    "-af",
+                    format!(
+                        "aloop=loop=1:start={}:size={}",
+                        loop_start,
+                        loop_end - loop_start
+                    ),
+                )
+                .add_kv("-f", "flac")
+                .add(looped_cache_file.path())
+                .into_vec();
             log::debug!("Running ffmpeg {:?}", ffmpeg_args);
             let ffmpeg_loop_output = Command::new("ffmpeg")
                 .args(ffmpeg_args)
@@ -128,12 +110,13 @@ pub fn loop_using_metadata(
     }
 
     // Run FFMPEG command to tell me what the length is
-    let probe_args = parse_command_args(&*format!(
-        "{general} {loglevel} -i {file} -show_entries stream=duration -of compact=p=0:nk=1",
-        general = GENERAL_FFMPEG_INSTRUCTIONS,
-        loglevel = get_ffmpeg_loglevel(),
-        file = looped_cache_file.path().display(),
-    ));
+    let probe_args = ArgBuilder::new()
+        .add_all(GENERAL_FFMPEG_INSTRUCTIONS)
+        .add_all(get_ffmpeg_loglevel())
+        .add_kv("-i", looped_cache_file.path())
+        .add_kv("-show_entries", "stream=duration")
+        .add_kv("-of", "compact=p=0:nk=1")
+        .into_vec();
     log::debug!("Running ffprobe {:?}", probe_args);
     let audio_probe_output = Command::new("ffprobe")
         .args(probe_args)
@@ -152,14 +135,18 @@ pub fn loop_using_metadata(
     };
 
     // Run FFMPEG command to taper the end since most rolls are intended to "loop forever".
-    let ffmpeg_args = parse_command_args(&*format!(
-        "{general} {loglevel} -y -i {file} -af afade=t=out:st={start}:d=5 -f ogg {out_file}",
-        general = GENERAL_FFMPEG_INSTRUCTIONS,
-        loglevel = get_ffmpeg_loglevel(),
-        file = looped_cache_file.path().display(),
-        start = (audio_len - 5f64).max(0f64),
-        out_file = original_cache_file.path().display(),
-    ));
+    let ffmpeg_args = ArgBuilder::new()
+        .add_all(GENERAL_FFMPEG_INSTRUCTIONS)
+        .add_all(get_ffmpeg_loglevel())
+        .add("-y")
+        .add_kv("-i", looped_cache_file.path())
+        .add_kv(
+            "-af",
+            format!("afade=t=out:st={}:d=5", (audio_len - 5f64).max(0f64)),
+        )
+        .add_kv("-f", "flac")
+        .add(original_cache_file.path())
+        .into_vec();
     log::debug!("Running ffmpeg {:?}", ffmpeg_args);
     let ffmpeg_taper_output = Command::new("ffmpeg")
         .args(ffmpeg_args)
@@ -179,10 +166,77 @@ pub fn loop_using_metadata(
     Ok(())
 }
 
-fn get_ffmpeg_loglevel() -> &'static str {
+pub fn ogg_to_flac(
+    mut reader: impl Read + Send,
+    mut output: impl Write + Send,
+) -> Result<(), LastLegendError> {
+    let mut output_temp = tempfile::NamedTempFile::new()
+        .map_err(|e| LastLegendError::Io("Couldn't create temporary cache file".into(), e))?;
+    let ffmpeg_args = ArgBuilder::new()
+        .add_all(GENERAL_FFMPEG_INSTRUCTIONS)
+        .add_all(get_ffmpeg_loglevel())
+        .add("-y")
+        .add_kv("-i", "pipe:")
+        .add_kv("-map_metadata", "0:s:a:0")
+        .add_kv("-f", "flac")
+        .add(output_temp.path())
+        .into_vec();
+    log::debug!("Running ffmpeg {:?}", ffmpeg_args);
+    let mut child = ChildDropGuard(
+        Command::new("ffmpeg")
+            .args(ffmpeg_args)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| LastLegendError::Io("Couldn't spawn ffmpeg".into(), e))?,
+    );
+    let (stdout, stderr) = std::thread::scope(|s| {
+        let mut stdin = child.stdin.take().unwrap();
+        let to_ffmpeg = s.spawn(move || {
+            std::io::copy(&mut reader, &mut stdin)
+                .map_err(|e| LastLegendError::Io("Couldn't copy to ffmpeg".into(), e))?;
+            Ok::<(), LastLegendError>(())
+        });
+        let mut stdout = child.stdout.take().unwrap();
+        let stdout_task = s.spawn(move || {
+            let mut stdout_buffer = Vec::new();
+            std::io::copy(&mut stdout, &mut stdout_buffer)
+                .map_err(|e| LastLegendError::Io("Couldn't copy stdout from ffmpeg".into(), e))?;
+            Ok::<_, LastLegendError>(stdout_buffer)
+        });
+        let mut stderr = child.stderr.take().unwrap();
+        let stderr_task = s.spawn(move || {
+            let mut stderr_buffer = Vec::new();
+            std::io::copy(&mut stderr, &mut stderr_buffer)
+                .map_err(|e| LastLegendError::Io("Couldn't copy stderr from ffmpeg".into(), e))?;
+            Ok::<_, LastLegendError>(stderr_buffer)
+        });
+        to_ffmpeg.join().expect("join error")?;
+        let stdout = stdout_task.join().expect("join error")?;
+        let stderr = stderr_task.join().expect("join error")?;
+
+        Ok::<_, LastLegendError>((stdout, stderr))
+    })?;
+    let exit = child
+        .0
+        .wait()
+        .map_err(|e| LastLegendError::Io("Couldn't wait for ffmpeg".into(), e))?;
+    check_exit(&Output {
+        status: exit,
+        stderr,
+        stdout,
+    })?;
+
+    std::io::copy(output_temp.as_file_mut(), &mut output)
+        .map_err(|e| LastLegendError::Io("Couldn't copy from temp file".into(), e))?;
+    Ok(())
+}
+
+fn get_ffmpeg_loglevel() -> [&'static str; 2] {
     match log::max_level() {
-        log::LevelFilter::Trace => "-loglevel debug",
-        _ => "-loglevel error",
+        log::LevelFilter::Trace => ["-loglevel", "debug"],
+        _ => ["-loglevel", "error"],
     }
 }
 

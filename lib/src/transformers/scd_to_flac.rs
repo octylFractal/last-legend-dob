@@ -2,38 +2,39 @@ use std::borrow::Cow;
 use std::io::{Cursor, Read, Seek, SeekFrom};
 use std::path::Path;
 
-use binrw::{binread, BinRead, BinReaderExt, BinResult, ReadOptions};
+use binrw::{binread, BinRead, BinReaderExt, BinResult, Endian};
 
 use crate::error::LastLegendError;
+use crate::ffmpeg::ogg_to_flac;
 use crate::io_tricks::ReadMixer;
 use crate::sqpath::{SqPath, SqPathBuf};
 use crate::transformers::{Transformer, TransformerForFile};
 use crate::xor::XorRead;
 
-/// Extract a `.ogg` from the `.scd` FFXIV uses.
+/// Extract a `.flac` from the `.scd` FFXIV uses.
 #[derive(Debug, Default)]
-pub struct ScdToOgg;
+pub struct ScdToFlac;
 
-impl<R: Read> Transformer<R> for ScdToOgg {
-    type ForFile = ScdToOggForFile;
+impl<R: Read> Transformer<R> for ScdToFlac {
+    type ForFile = ScdToFlacForFile;
 
     fn maybe_for(&self, file: SqPathBuf) -> Option<Self::ForFile> {
         file.as_str()
             .ends_with(".scd")
-            .then(|| ScdToOggForFile { file })
+            .then_some(ScdToFlacForFile { file })
     }
 }
 
 #[derive(Debug)]
-pub struct ScdToOggForFile {
+pub struct ScdToFlacForFile {
     file: SqPathBuf,
 }
 
-impl<R: Read> TransformerForFile<R> for ScdToOggForFile {
+impl<R: Read> TransformerForFile<R> for ScdToFlacForFile {
     fn renamed_file(&self) -> Cow<SqPath> {
         Cow::Owned(SqPathBuf::new(
             Path::new(self.file.as_str())
-                .with_extension("ogg")
+                .with_extension("flac")
                 .as_os_str()
                 .to_str()
                 .unwrap(),
@@ -73,7 +74,7 @@ const XOR_TABLE: &[u8; 256] = &[
     0x83, 0x26, 0xF9, 0x83, 0x2E, 0xFF, 0xE3, 0x16, 0x7D, 0xC0, 0x1E, 0x63, 0x21, 0x07, 0xE3, 0x01,
 ];
 
-impl ScdToOggForFile {
+impl ScdToFlacForFile {
     fn decode(mut content: Cursor<Vec<u8>>) -> Result<Box<dyn Read>, LastLegendError> {
         let scd: Scd = content
             .read_le()
@@ -99,9 +100,10 @@ impl ScdToOggForFile {
                 ReadMixer::Plain(base)
             };
         let mut final_content = Vec::new();
-        ogg_reader
-            .read_to_end(&mut final_content)
-            .map_err(|e| LastLegendError::Io("Couldn't read OGG".into(), e))?;
+        ogg_to_flac(
+            &mut ogg_reader,
+            &mut final_content,
+        )?;
         Ok(Box::new(Cursor::new(final_content)))
     }
 }
@@ -128,7 +130,7 @@ struct Scd {
     )]
     pub sound_entry_header: SoundEntryHeader,
     #[br(temp, args(sound_entry_header.aux_chunk_count))]
-    aux_chunk_devnull: AuxChunkDevNull,
+    _aux_chunk_devnull: AuxChunkDevNull,
     pub ogg_seek_header: OggMetaHeader,
 }
 
@@ -146,24 +148,25 @@ struct ScdOffsetsHeader {
 struct SoundEntryHeader {
     pub data_size: u32,
     #[br(temp)]
-    channels: u32,
+    _channels: u32,
     #[br(temp)]
-    frequency: u32,
+    _frequency: u32,
     pub data_type: DataType,
     #[br(temp)]
-    loop_start: u32,
+    _loop_start: u32,
     #[br(temp)]
-    loop_end: u32,
+    _loop_end: u32,
     #[br(temp)]
-    first_frame_pos: u32,
+    _first_frame_pos: u32,
     #[br(pad_after = 2)]
     pub aux_chunk_count: u16,
 }
 
 #[binread]
 #[derive(Debug, Eq, PartialEq)]
-#[br(repr(u32))]
+#[br(repr(i32))]
 enum DataType {
+    Empty = -1,
     Ogg = 0x6,
     MsAdpcm = 0xC,
 }
@@ -172,12 +175,12 @@ enum DataType {
 struct AuxChunkDevNull;
 
 impl BinRead for AuxChunkDevNull {
-    type Args = (u16,);
+    type Args<'a> = (u16,);
 
     fn read_options<R: Read + Seek>(
         reader: &mut R,
-        _: &ReadOptions,
-        (count,): Self::Args,
+        _: Endian,
+        (count,): Self::Args<'_>,
     ) -> BinResult<Self> {
         let mut position = reader.stream_position()?;
         for _ in 0..count {
@@ -199,7 +202,7 @@ struct OggMetaHeader {
     #[br(temp, pad_after = 0x8)]
     vorbis_header_size: u32,
     #[br(temp, args { count: usize::try_from(seek_table_size).unwrap() / 4 })]
-    seek_table: Vec<u32>,
+    _seek_table: Vec<u32>,
     /// May be encoded. Decoding is done separately.
     #[br(args { count: vorbis_header_size.try_into().unwrap() })]
     pub vorbis_header: Vec<u8>,
