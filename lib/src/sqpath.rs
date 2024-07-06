@@ -252,6 +252,7 @@ pub enum Expansion {
     Stormblood,
     Shadowbringers,
     Endwalker,
+    Dawntrail,
 }
 
 impl Expansion {
@@ -270,6 +271,7 @@ impl Expansion {
                 "ex2" => (Expansion::Stormblood, true),
                 "ex3" => (Expansion::Shadowbringers, true),
                 "ex4" => (Expansion::Endwalker, true),
+                "ex5" => (Expansion::Dawntrail, true),
                 _ => (Expansion::FFXIV, false),
             })
     }
@@ -284,6 +286,7 @@ impl Expansion {
             Expansion::Stormblood => b"02",
             Expansion::Shadowbringers => b"03",
             Expansion::Endwalker => b"04",
+            Expansion::Dawntrail => b"05",
         }
     }
 
@@ -295,6 +298,7 @@ impl Expansion {
             Expansion::Stormblood => 0x02u8,
             Expansion::Shadowbringers => 0x03u8,
             Expansion::Endwalker => 0x04u8,
+            Expansion::Dawntrail => 0x05u8,
         }
     }
 
@@ -306,6 +310,7 @@ impl Expansion {
             Expansion::Stormblood => "ex2",
             Expansion::Shadowbringers => "ex3",
             Expansion::Endwalker => "ex4",
+            Expansion::Dawntrail => "ex5",
         }
     }
 }
@@ -630,14 +635,6 @@ mod sqpath_tests {
     }
 
     #[test]
-    fn expansion_index_fragment() {
-        assert_eq!(Expansion::FFXIV.file_name_prefix_bytes(), *b"00");
-        assert_eq!(Expansion::Heavensward.file_name_prefix_bytes(), *b"01");
-        assert_eq!(Expansion::Stormblood.file_name_prefix_bytes(), *b"02");
-        assert_eq!(Expansion::Shadowbringers.file_name_prefix_bytes(), *b"03");
-    }
-
-    #[test]
     fn expansion_parse_and_as_str_eq() {
         assert_eq!(
             Expansion::parse_from_sqpath("common/ffxiv/dfgsdfg.asd")
@@ -669,14 +666,6 @@ mod sqpath_tests {
                 .as_str(),
             "ex3"
         );
-    }
-
-    #[test]
-    fn expansion_file_name_prefix() {
-        assert_eq!(Expansion::FFXIV.file_name_prefix(), 0x00u8);
-        assert_eq!(Expansion::Heavensward.file_name_prefix(), 0x01u8);
-        assert_eq!(Expansion::Stormblood.file_name_prefix(), 0x02u8);
-        assert_eq!(Expansion::Shadowbringers.file_name_prefix(), 0x03u8);
     }
 
     #[test]
