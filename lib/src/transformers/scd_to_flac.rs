@@ -100,10 +100,7 @@ impl ScdToFlacForFile {
                 ReadMixer::Plain(base)
             };
         let mut final_content = Vec::new();
-        ogg_to_flac(
-            &mut ogg_reader,
-            &mut final_content,
-        )?;
+        ogg_to_flac(&mut ogg_reader, &mut final_content)?;
         Ok(Box::new(Cursor::new(final_content)))
     }
 }
