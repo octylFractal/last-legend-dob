@@ -8,8 +8,9 @@ use crate::tricks::ArgBuilder;
 
 const GENERAL_FFMPEG_INSTRUCTIONS: [&str; 1] = ["-hide_banner"];
 
-/// Loop a FLAC using the Loopstart and Loopend metadata.
+/// Loop a file using the Loopstart and Loopend metadata.
 pub fn loop_using_metadata(
+    ffmpeg_format: &str,
     mut reader: impl Read,
     mut output: impl Write,
 ) -> Result<(), LastLegendError> {
@@ -95,7 +96,7 @@ pub fn loop_using_metadata(
                         loop_end - loop_start
                     ),
                 )
-                .add_kv("-f", "flac")
+                .add_kv("-f", ffmpeg_format)
                 .add(looped_cache_file.path())
                 .into_vec();
             log::debug!("Running ffmpeg {:?}", ffmpeg_args);

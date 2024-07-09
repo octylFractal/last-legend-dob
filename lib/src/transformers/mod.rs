@@ -5,11 +5,11 @@ use strum::EnumString;
 
 use crate::error::LastLegendError;
 use crate::sqpath::{SqPath, SqPathBuf};
-use crate::transformers::loop_flac::LoopFlac;
-use crate::transformers::scd_to_flac::ScdToFlac;
+use crate::transformers::loop_file::LoopFile;
+use crate::transformers::scd_tf::{OggTransform, ScdTf};
 
-mod loop_flac;
-mod scd_to_flac;
+mod loop_file;
+mod scd_tf;
 
 pub trait Transformer<R> {
     type ForFile: TransformerForFile<R>;
@@ -31,6 +31,8 @@ pub trait TransformerForFile<R> {
 pub enum TransformerImpl {
     ScdToFlac,
     LoopFlac,
+    ScdToOgg,
+    LoopOgg,
 }
 
 impl<R: Read> Transformer<R> for TransformerImpl {
@@ -38,10 +40,36 @@ impl<R: Read> Transformer<R> for TransformerImpl {
 
     fn maybe_for(&self, file: SqPathBuf) -> Option<Self::ForFile> {
         match self {
-            Self::ScdToFlac => <ScdToFlac as Transformer<R>>::maybe_for(&ScdToFlac, file)
-                .map(|e| Box::new(e) as Self::ForFile),
-            Self::LoopFlac => <LoopFlac as Transformer<R>>::maybe_for(&LoopFlac, file)
-                .map(|e| Box::new(e) as Self::ForFile),
+            Self::ScdToFlac => <ScdTf as Transformer<R>>::maybe_for(
+                &ScdTf {
+                    ogg_transform: OggTransform::Flac,
+                },
+                file,
+            )
+            .map(|e| Box::new(e) as Self::ForFile),
+            Self::LoopFlac => <LoopFile as Transformer<R>>::maybe_for(
+                &LoopFile {
+                    extension: "flac".to_string(),
+                    ffmpeg_format: "flac".to_string(),
+                },
+                file,
+            )
+            .map(|e| Box::new(e) as Self::ForFile),
+            Self::ScdToOgg => <ScdTf as Transformer<R>>::maybe_for(
+                &ScdTf {
+                    ogg_transform: OggTransform::Ogg,
+                },
+                file,
+            )
+            .map(|e| Box::new(e) as Self::ForFile),
+            Self::LoopOgg => <LoopFile as Transformer<R>>::maybe_for(
+                &LoopFile {
+                    extension: "ogg".to_string(),
+                    ffmpeg_format: "ogg".to_string(),
+                },
+                file,
+            )
+            .map(|e| Box::new(e) as Self::ForFile),
         }
     }
 }

@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::fmt::Debug;
 use std::io::{Cursor, Read, Seek, SeekFrom};
 use std::path::Path;
 
@@ -11,30 +12,50 @@ use crate::sqpath::{SqPath, SqPathBuf};
 use crate::transformers::{Transformer, TransformerForFile};
 use crate::xor::XorRead;
 
-/// Extract a `.flac` from the `.scd` FFXIV uses.
-#[derive(Debug, Default)]
-pub struct ScdToFlac;
+/// Known transformations for `.ogg` files.
+#[derive(Debug, Clone, Copy)]
+pub enum OggTransform {
+    Ogg,
+    Flac,
+}
 
-impl<R: Read> Transformer<R> for ScdToFlac {
-    type ForFile = ScdToFlacForFile;
+impl OggTransform {
+    pub fn extension_str(&self) -> &'static str {
+        match self {
+            Self::Ogg => "ogg",
+            Self::Flac => "flac",
+        }
+    }
+}
+
+/// Extract an `.ogg`-based file from the `.scd` FFXIV uses.
+#[derive(Debug)]
+pub struct ScdTf {
+    pub(crate) ogg_transform: OggTransform,
+}
+
+impl<R: Read> Transformer<R> for ScdTf {
+    type ForFile = ScdTfForFile;
 
     fn maybe_for(&self, file: SqPathBuf) -> Option<Self::ForFile> {
-        file.as_str()
-            .ends_with(".scd")
-            .then_some(ScdToFlacForFile { file })
+        file.as_str().ends_with(".scd").then_some(ScdTfForFile {
+            file,
+            ogg_transform: self.ogg_transform,
+        })
     }
 }
 
 #[derive(Debug)]
-pub struct ScdToFlacForFile {
+pub struct ScdTfForFile {
     file: SqPathBuf,
+    ogg_transform: OggTransform,
 }
 
-impl<R: Read> TransformerForFile<R> for ScdToFlacForFile {
+impl<R: Read> TransformerForFile<R> for ScdTfForFile {
     fn renamed_file(&self) -> Cow<SqPath> {
         Cow::Owned(SqPathBuf::new(
             Path::new(self.file.as_str())
-                .with_extension("flac")
+                .with_extension(self.ogg_transform.extension_str())
                 .as_os_str()
                 .to_str()
                 .unwrap(),
@@ -51,7 +72,7 @@ impl<R: Read> TransformerForFile<R> for ScdToFlacForFile {
             drop(content);
             Cursor::new(capture)
         };
-        Self::decode(content)
+        self.decode(content)
     }
 }
 
@@ -74,8 +95,8 @@ const XOR_TABLE: &[u8; 256] = &[
     0x83, 0x26, 0xF9, 0x83, 0x2E, 0xFF, 0xE3, 0x16, 0x7D, 0xC0, 0x1E, 0x63, 0x21, 0x07, 0xE3, 0x01,
 ];
 
-impl ScdToFlacForFile {
-    fn decode(mut content: Cursor<Vec<u8>>) -> Result<Box<dyn Read>, LastLegendError> {
+impl ScdTfForFile {
+    fn decode(&self, mut content: Cursor<Vec<u8>>) -> Result<Box<dyn Read>, LastLegendError> {
         let scd: Scd = content
             .read_le()
             .map_err(|e| LastLegendError::BinRW("Couldn't read SCD".into(), e))?;
@@ -99,9 +120,14 @@ impl ScdToFlacForFile {
             } else {
                 ReadMixer::Plain(base)
             };
-        let mut final_content = Vec::new();
-        ogg_to_flac(&mut ogg_reader, &mut final_content)?;
-        Ok(Box::new(Cursor::new(final_content)))
+        match self.ogg_transform {
+            OggTransform::Ogg => Ok(Box::new(ogg_reader)),
+            OggTransform::Flac => {
+                let mut final_content = Vec::new();
+                ogg_to_flac(&mut ogg_reader, &mut final_content)?;
+                Ok(Box::new(Cursor::new(final_content)))
+            }
+        }
     }
 }
 

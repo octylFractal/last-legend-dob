@@ -6,33 +6,40 @@ use crate::ffmpeg::loop_using_metadata;
 use crate::sqpath::{SqPath, SqPathBuf};
 use crate::transformers::{Transformer, TransformerForFile};
 
-/// Loop a `.flac` using FFMPEG.
+/// Loop a file using FFMPEG.
 #[derive(Debug, Default)]
-pub struct LoopFlac;
+pub struct LoopFile {
+    pub(crate) extension: String,
+    pub(crate) ffmpeg_format: String,
+}
 
-impl<R: Read> Transformer<R> for LoopFlac {
-    type ForFile = LoopFlacForFile;
+impl<R: Read> Transformer<R> for LoopFile {
+    type ForFile = LoopFileForFile;
 
     fn maybe_for(&self, file: SqPathBuf) -> Option<Self::ForFile> {
         file.as_str()
-            .ends_with(".flac")
-            .then_some(LoopFlacForFile { file })
+            .ends_with(&format!(".{}", self.extension))
+            .then_some(LoopFileForFile {
+                file,
+                ffmpeg_format: self.ffmpeg_format.clone(),
+            })
     }
 }
 
 #[derive(Debug)]
-pub struct LoopFlacForFile {
+pub struct LoopFileForFile {
     file: SqPathBuf,
+    ffmpeg_format: String,
 }
 
-impl<R: Read> TransformerForFile<R> for LoopFlacForFile {
+impl<R: Read> TransformerForFile<R> for LoopFileForFile {
     fn renamed_file(&self) -> Cow<SqPath> {
         Cow::Borrowed(&self.file)
     }
 
     fn transform(&self, content: R) -> Result<Box<dyn Read>, LastLegendError> {
         let mut final_content = Vec::new();
-        loop_using_metadata(content, &mut final_content)?;
+        loop_using_metadata(&self.ffmpeg_format, content, &mut final_content)?;
         Ok(Box::new(Cursor::new(final_content)))
     }
 }
