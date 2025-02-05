@@ -62,7 +62,7 @@ pub struct DatEntryContent<'a, R> {
     buf: Option<Buffer>,
 }
 
-impl<'a, R: Read + Seek> DatEntryContent<'a, R> {
+impl<R: Read + Seek> DatEntryContent<'_, R> {
     /// Finish using the content reader, and get back the original reader.
     /// The position will not be adjusted.
     pub fn into_inner(self) -> R {
@@ -99,7 +99,7 @@ impl<'a, R: Read + Seek> DatEntryContent<'a, R> {
     }
 }
 
-impl<'a, R: Read + Seek> Read for DatEntryContent<'a, R> {
+impl<R: Read + Seek> Read for DatEntryContent<'_, R> {
     fn read(&mut self, output_buf: &mut [u8]) -> std::io::Result<usize> {
         let buf = match &mut self.buf {
             Some(buf) if buf.can_read() => buf,

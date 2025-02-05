@@ -36,7 +36,7 @@ struct SerdeRowReader<'col> {
     col_index: usize,
 }
 
-impl<'a, 'col, 'de> SeqAccess<'de> for &'a mut SerdeRowReader<'col> {
+impl<'de> SeqAccess<'de> for &mut SerdeRowReader<'_> {
     type Error = LastLegendError;
 
     fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>, Self::Error>
@@ -50,7 +50,7 @@ impl<'a, 'col, 'de> SeqAccess<'de> for &'a mut SerdeRowReader<'col> {
     }
 }
 
-impl<'a, 'si, 'de> Deserializer<'de> for &'a mut SerdeRowReader<'si> {
+impl<'de> Deserializer<'de> for &mut SerdeRowReader<'_> {
     type Error = LastLegendError;
 
     fn deserialize_any<V>(self, visitor: V) -> Result<V::Value, Self::Error>

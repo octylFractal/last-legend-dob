@@ -21,12 +21,18 @@ pub struct ArgBuilder {
     parts: Vec<OsString>,
 }
 
+impl Default for ArgBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ArgBuilder {
     pub fn new() -> Self {
         Self { parts: Vec::new() }
     }
 
-    pub fn add(mut self, part: impl Into<OsString>) -> Self {
+    pub fn add_arg(mut self, part: impl Into<OsString>) -> Self {
         self.parts.push(part.into());
         self
     }

@@ -31,10 +31,9 @@ pub struct PackHeader {
     pub size: U32Size,
     pub version: u32,
     pub content_type: ContentType,
-    pub timestamp: SqPackTimestamp,
     // Skip the padding bytes
-    #[brw(pad_before = size.0 - HEADER_SIZE)]
-    padding: (),
+    #[brw(pad_after = size.0 - HEADER_SIZE)]
+    pub timestamp: SqPackTimestamp,
 }
 
 #[binrw]

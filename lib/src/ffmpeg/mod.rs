@@ -86,7 +86,7 @@ pub fn loop_using_metadata(
             let ffmpeg_args = ArgBuilder::new()
                 .add_all(GENERAL_FFMPEG_INSTRUCTIONS)
                 .add_all(get_ffmpeg_loglevel())
-                .add("-y")
+                .add_arg("-y")
                 .add_kv("-i", original_cache_file.path())
                 .add_kv(
                     "-af",
@@ -97,7 +97,7 @@ pub fn loop_using_metadata(
                     ),
                 )
                 .add_kv("-f", ffmpeg_format)
-                .add(looped_cache_file.path())
+                .add_arg(looped_cache_file.path())
                 .into_vec();
             log::debug!("Running ffmpeg {:?}", ffmpeg_args);
             let ffmpeg_loop_output = Command::new("ffmpeg")
@@ -139,14 +139,14 @@ pub fn loop_using_metadata(
     let ffmpeg_args = ArgBuilder::new()
         .add_all(GENERAL_FFMPEG_INSTRUCTIONS)
         .add_all(get_ffmpeg_loglevel())
-        .add("-y")
+        .add_arg("-y")
         .add_kv("-i", looped_cache_file.path())
         .add_kv(
             "-af",
             format!("afade=t=out:st={}:d=5", (audio_len - 5f64).max(0f64)),
         )
         .add_kv("-f", ffmpeg_format)
-        .add(original_cache_file.path())
+        .add_arg(original_cache_file.path())
         .into_vec();
     log::debug!("Running ffmpeg {:?}", ffmpeg_args);
     let ffmpeg_taper_output = Command::new("ffmpeg")
@@ -177,11 +177,11 @@ pub fn format_rewrite(
     let ffmpeg_args = ArgBuilder::new()
         .add_all(GENERAL_FFMPEG_INSTRUCTIONS)
         .add_all(get_ffmpeg_loglevel())
-        .add("-y")
+        .add_arg("-y")
         .add_kv("-i", "pipe:")
         .add_kv("-map_metadata", "0:s:a:0")
         .add_kv("-f", out_format)
-        .add(output_temp.path())
+        .add_arg(output_temp.path())
         .into_vec();
     log::debug!("Running ffmpeg {:?}", ffmpeg_args);
     let mut child = ChildDropGuard(

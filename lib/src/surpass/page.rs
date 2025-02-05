@@ -110,10 +110,7 @@ impl<R: Read + Seek> Iterator for RowBufferIter<R> {
                         .map(|o| Self::default_iter(&mut self.reader, o));
                 }
                 SubRow::Inactive => {
-                    let row_offset = match self.next_row_offset() {
-                        Some(o) => o,
-                        None => return None,
-                    };
+                    let row_offset = self.next_row_offset()?;
                     let (data_size, row_count) = match Self::read_row_header(&mut self.reader) {
                         Ok(v) => v,
                         Err(e) => return Some(Err(e)),
