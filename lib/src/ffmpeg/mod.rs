@@ -145,7 +145,7 @@ pub fn loop_using_metadata(
             "-af",
             format!("afade=t=out:st={}:d=5", (audio_len - 5f64).max(0f64)),
         )
-        .add_kv("-f", "flac")
+        .add_kv("-f", ffmpeg_format)
         .add(original_cache_file.path())
         .into_vec();
     log::debug!("Running ffmpeg {:?}", ffmpeg_args);
@@ -167,7 +167,8 @@ pub fn loop_using_metadata(
     Ok(())
 }
 
-pub fn ogg_to_flac(
+pub fn format_rewrite(
+    out_format: &str,
     mut reader: impl Read + Send,
     mut output: impl Write + Send,
 ) -> Result<(), LastLegendError> {
@@ -179,7 +180,7 @@ pub fn ogg_to_flac(
         .add("-y")
         .add_kv("-i", "pipe:")
         .add_kv("-map_metadata", "0:s:a:0")
-        .add_kv("-f", "flac")
+        .add_kv("-f", out_format)
         .add(output_temp.path())
         .into_vec();
     log::debug!("Running ffmpeg {:?}", ffmpeg_args);

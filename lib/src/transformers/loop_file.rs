@@ -37,7 +37,7 @@ impl<R: Read> TransformerForFile<R> for LoopFileForFile {
         Cow::Borrowed(&self.file)
     }
 
-    fn transform(&self, content: R) -> Result<Box<dyn Read>, LastLegendError> {
+    fn transform(&self, content: R) -> Result<Box<dyn Read + Send>, LastLegendError> {
         let mut final_content = Vec::new();
         loop_using_metadata(&self.ffmpeg_format, content, &mut final_content)?;
         Ok(Box::new(Cursor::new(final_content)))

@@ -6,7 +6,7 @@ use std::path::Path;
 use binrw::{binread, BinRead, BinReaderExt, BinResult, Endian};
 
 use crate::error::LastLegendError;
-use crate::ffmpeg::ogg_to_flac;
+use crate::ffmpeg::format_rewrite;
 use crate::io_tricks::ReadMixer;
 use crate::sqpath::{SqPath, SqPathBuf};
 use crate::transformers::{Transformer, TransformerForFile};
@@ -62,7 +62,7 @@ impl<R: Read> TransformerForFile<R> for ScdTfForFile {
         ))
     }
 
-    fn transform(&self, mut content: R) -> Result<Box<dyn Read>, LastLegendError> {
+    fn transform(&self, mut content: R) -> Result<Box<dyn Read + Send>, LastLegendError> {
         // Re-do the content as a seekable in-memory buffer.
         let content = {
             let mut capture = Vec::<u8>::new();
@@ -96,7 +96,10 @@ const XOR_TABLE: &[u8; 256] = &[
 ];
 
 impl ScdTfForFile {
-    fn decode(&self, mut content: Cursor<Vec<u8>>) -> Result<Box<dyn Read>, LastLegendError> {
+    fn decode(
+        &self,
+        mut content: Cursor<Vec<u8>>,
+    ) -> Result<Box<dyn Read + Send>, LastLegendError> {
         let scd: Scd = content
             .read_le()
             .map_err(|e| LastLegendError::BinRW("Couldn't read SCD".into(), e))?;
@@ -124,7 +127,7 @@ impl ScdTfForFile {
             OggTransform::Ogg => Ok(Box::new(ogg_reader)),
             OggTransform::Flac => {
                 let mut final_content = Vec::new();
-                ogg_to_flac(&mut ogg_reader, &mut final_content)?;
+                format_rewrite("flac", &mut ogg_reader, &mut final_content)?;
                 Ok(Box::new(Cursor::new(final_content)))
             }
         }

@@ -5,9 +5,11 @@ use strum::EnumString;
 
 use crate::error::LastLegendError;
 use crate::sqpath::{SqPath, SqPathBuf};
+use crate::transformers::change_format::ChangeFile;
 use crate::transformers::loop_file::LoopFile;
 use crate::transformers::scd_tf::{OggTransform, ScdTf};
 
+mod change_format;
 mod loop_file;
 mod scd_tf;
 
@@ -23,7 +25,7 @@ pub trait TransformerForFile<R> {
     fn renamed_file(&self) -> Cow<SqPath>;
 
     /// Attempt to run the transformer against the [content].
-    fn transform(&self, content: R) -> Result<Box<dyn Read>, LastLegendError>;
+    fn transform(&self, content: R) -> Result<Box<dyn Read + Send>, LastLegendError>;
 }
 
 #[derive(EnumString, Copy, Clone, Debug)]
@@ -33,9 +35,10 @@ pub enum TransformerImpl {
     LoopFlac,
     ScdToOgg,
     LoopOgg,
+    FlacToOgg,
 }
 
-impl<R: Read> Transformer<R> for TransformerImpl {
+impl<R: Read + Send> Transformer<R> for TransformerImpl {
     type ForFile = Box<dyn TransformerForFile<R>>;
 
     fn maybe_for(&self, file: SqPathBuf) -> Option<Self::ForFile> {
@@ -70,6 +73,15 @@ impl<R: Read> Transformer<R> for TransformerImpl {
                 file,
             )
             .map(|e| Box::new(e) as Self::ForFile),
+            Self::FlacToOgg => <ChangeFile as Transformer<R>>::maybe_for(
+                &ChangeFile {
+                    from_extension: "flac".to_string(),
+                    to_extension: "ogg".to_string(),
+                    to_ffmpeg_format: "ogg".to_string(),
+                },
+                file,
+            )
+            .map(|e| Box::new(e) as Self::ForFile),
         }
     }
 }
@@ -79,7 +91,7 @@ impl<R: Read> TransformerForFile<R> for Box<dyn TransformerForFile<R>> {
         Box::as_ref(self).renamed_file()
     }
 
-    fn transform(&self, content: R) -> Result<Box<dyn Read>, LastLegendError> {
+    fn transform(&self, content: R) -> Result<Box<dyn Read + Send>, LastLegendError> {
         Box::as_ref(self).transform(content)
     }
 }

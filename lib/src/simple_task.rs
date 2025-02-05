@@ -52,7 +52,7 @@ pub fn create_transformed_reader(
         .read_content_to_vec(dat_reader)
         .map_err(|e| LastLegendError::Io("Failed to read dat content".into(), e))?;
 
-    let mut reader: Box<dyn Read> = Box::new(Cursor::new(content));
+    let mut reader: Box<dyn Read + Send> = Box::new(Cursor::new(content));
     for t in transformers {
         if let Some(tf) = t.maybe_for(file_name.clone()) {
             file_name = tf.renamed_file().into_owned();
@@ -65,7 +65,7 @@ pub fn create_transformed_reader(
 
 pub struct TransformedReader {
     pub file_name: SqPathBuf,
-    pub reader: Box<dyn Read>,
+    pub reader: Box<dyn Read + Send>,
 }
 
 pub fn format_index_entry_for_console<P: AsRef<Path>, F: AsRef<SqPath>>(
