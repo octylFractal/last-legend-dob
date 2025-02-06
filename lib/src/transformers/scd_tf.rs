@@ -1,37 +1,39 @@
-use std::borrow::Cow;
-use std::fmt::Debug;
-use std::io::{Cursor, Read, Seek, SeekFrom};
-use std::path::Path;
-
-use binrw::{binread, BinRead, BinReaderExt, BinResult, Endian};
-
+#![allow(clippy::unused_unit)]
 use crate::error::LastLegendError;
 use crate::ffmpeg::format_rewrite;
 use crate::io_tricks::ReadMixer;
 use crate::sqpath::{SqPath, SqPathBuf};
 use crate::transformers::{Transformer, TransformerForFile};
 use crate::xor::XorRead;
+use binrw::io::TakeSeekExt;
+use binrw::{binread, binrw, BinReaderExt, BinResult, BinWriterExt};
+use std::borrow::Cow;
+use std::fmt::Debug;
+use std::io::{Cursor, Read, SeekFrom};
+use std::path::Path;
 
-/// Known transformations for `.ogg` files.
+/// Known transformations for the audio from `.scd` files.
 #[derive(Debug, Clone, Copy)]
-pub enum OggTransform {
+pub enum ScdAudioTransform {
+    Wav,
     Ogg,
     Flac,
 }
 
-impl OggTransform {
+impl ScdAudioTransform {
     pub fn extension_str(&self) -> &'static str {
         match self {
+            Self::Wav => "wav",
             Self::Ogg => "ogg",
             Self::Flac => "flac",
         }
     }
 }
 
-/// Extract an `.ogg`-based file from the `.scd` FFXIV uses.
+/// Extract an audio file from the `.scd` FFXIV uses.
 #[derive(Debug)]
 pub struct ScdTf {
-    pub(crate) ogg_transform: OggTransform,
+    pub(crate) audio_transform: ScdAudioTransform,
 }
 
 impl<R: Read> Transformer<R> for ScdTf {
@@ -40,7 +42,7 @@ impl<R: Read> Transformer<R> for ScdTf {
     fn maybe_for(&self, file: SqPathBuf) -> Option<Self::ForFile> {
         file.as_str().ends_with(".scd").then_some(ScdTfForFile {
             file,
-            ogg_transform: self.ogg_transform,
+            audio_transform: self.audio_transform,
         })
     }
 }
@@ -48,14 +50,14 @@ impl<R: Read> Transformer<R> for ScdTf {
 #[derive(Debug)]
 pub struct ScdTfForFile {
     file: SqPathBuf,
-    ogg_transform: OggTransform,
+    audio_transform: ScdAudioTransform,
 }
 
 impl<R: Read> TransformerForFile<R> for ScdTfForFile {
     fn renamed_file(&self) -> Cow<SqPath> {
         Cow::Owned(SqPathBuf::new(
             Path::new(self.file.as_str())
-                .with_extension(self.ogg_transform.extension_str())
+                .with_extension(self.audio_transform.extension_str())
                 .as_os_str()
                 .to_str()
                 .unwrap(),
@@ -103,32 +105,92 @@ impl ScdTfForFile {
         let scd: Scd = content
             .read_le()
             .map_err(|e| LastLegendError::BinRW("Couldn't read SCD".into(), e))?;
-        let vorbis_header =
-            if scd.ogg_seek_header.encryption_type == EncryptionType::VorbisHeaderXor {
-                ReadMixer::Wrapped(XorRead::new(
-                    Cursor::new(scd.ogg_seek_header.vorbis_header),
-                    move |_| scd.ogg_seek_header.xor_byte,
-                ))
-            } else {
-                ReadMixer::Plain(Cursor::new(scd.ogg_seek_header.vorbis_header))
-            };
-        let base = vorbis_header.chain(content.take(scd.sound_entry_header.data_size.into()));
-        let mut ogg_reader =
-            if scd.ogg_seek_header.encryption_type == EncryptionType::InternalTableXor {
-                let static_xor = (scd.sound_entry_header.data_size & 0x7F) as u8;
-                let table_off = (scd.sound_entry_header.data_size & 0x3F) as u8;
-                ReadMixer::Wrapped(XorRead::new(base, move |index| {
-                    XOR_TABLE[(usize::from(table_off) + index) & 0xFF] ^ static_xor
-                }))
-            } else {
-                ReadMixer::Plain(base)
-            };
-        match self.ogg_transform {
-            OggTransform::Ogg => Ok(Box::new(ogg_reader)),
-            OggTransform::Flac => {
-                let mut final_content = Vec::new();
-                format_rewrite("flac", &mut ogg_reader, &mut final_content)?;
-                Ok(Box::new(Cursor::new(final_content)))
+        match scd.sound_data {
+            SoundData::Empty => Err(LastLegendError::Custom("Empty sound data".into())),
+            SoundData::OggData(ogg_seek_header) => {
+                let vorbis_header =
+                    if ogg_seek_header.encryption_type == EncryptionType::VorbisHeaderXor {
+                        ReadMixer::Wrapped(XorRead::new(
+                            Cursor::new(ogg_seek_header.vorbis_header),
+                            move |_| ogg_seek_header.xor_byte,
+                        ))
+                    } else {
+                        ReadMixer::Plain(Cursor::new(ogg_seek_header.vorbis_header))
+                    };
+                let base =
+                    vorbis_header.chain(content.take(scd.sound_entry_header.data_size.into()));
+                let mut ogg_reader =
+                    if ogg_seek_header.encryption_type == EncryptionType::InternalTableXor {
+                        let static_xor = (scd.sound_entry_header.data_size & 0x7F) as u8;
+                        let table_off = (scd.sound_entry_header.data_size & 0x3F) as u8;
+                        ReadMixer::Wrapped(XorRead::new(base, move |index| {
+                            XOR_TABLE[(usize::from(table_off) + index) & 0xFF] ^ static_xor
+                        }))
+                    } else {
+                        ReadMixer::Plain(base)
+                    };
+                match self.audio_transform {
+                    ScdAudioTransform::Wav => {
+                        let mut final_content = Vec::new();
+                        format_rewrite("flac", &mut ogg_reader, &mut final_content)?;
+                        Ok(Box::new(Cursor::new(final_content)))
+                    }
+                    ScdAudioTransform::Ogg => Ok(Box::new(ogg_reader)),
+                    ScdAudioTransform::Flac => {
+                        let mut final_content = Vec::new();
+                        format_rewrite("flac", &mut ogg_reader, &mut final_content)?;
+                        Ok(Box::new(Cursor::new(final_content)))
+                    }
+                }
+            }
+            SoundData::MsAdpcmData(header) => {
+                let mut data = content.take_seek(scd.sound_entry_header.data_size.into());
+                let mut wav_file = Vec::new();
+                {
+                    // Write RIFF header
+                    wav_file.extend_from_slice(b"RIFF");
+                    // Reserve space for the size of the file
+                    wav_file.extend_from_slice(&[0xFF, 0xFF, 0xFF, 0xFF]);
+                    wav_file.extend_from_slice(b"WAVE");
+                    // Write the fmt chunk
+                    wav_file.extend_from_slice(b"fmt ");
+                    let mut fmt_header = Vec::new();
+                    Cursor::new(&mut fmt_header)
+                        .write_le(&header)
+                        .expect("should be able to write header");
+                    wav_file.extend_from_slice(
+                        &u32::try_from(fmt_header.len())
+                            .expect("should fit in u32")
+                            .to_le_bytes(),
+                    );
+                    wav_file.extend_from_slice(&fmt_header);
+                    // Write the data chunk
+                    wav_file.extend_from_slice(b"data");
+                    wav_file.extend_from_slice(
+                        &u32::try_from(data.limit())
+                            .expect("should fit in u32")
+                            .to_le_bytes(),
+                    );
+                    data.read_to_end(&mut wav_file)
+                        .map_err(|e| LastLegendError::Io("Couldn't read data".into(), e))?;
+                    // Fill in the size of the file
+                    let file_size = u32::try_from(wav_file.len() - 8).expect("should fit in u32");
+                    wav_file[4..8].copy_from_slice(&file_size.to_le_bytes());
+                }
+                let mut wav_cursor = Cursor::new(wav_file);
+                match self.audio_transform {
+                    ScdAudioTransform::Wav => Ok(Box::new(wav_cursor)),
+                    ScdAudioTransform::Ogg => {
+                        let mut final_content = Vec::new();
+                        format_rewrite("ogg", &mut wav_cursor, &mut final_content)?;
+                        Ok(Box::new(Cursor::new(final_content)))
+                    }
+                    ScdAudioTransform::Flac => {
+                        let mut final_content = Vec::new();
+                        format_rewrite("flac", &mut wav_cursor, &mut final_content)?;
+                        Ok(Box::new(Cursor::new(final_content)))
+                    }
+                }
             }
         }
     }
@@ -150,14 +212,10 @@ struct Scd {
     offsets_header: ScdOffsetsHeader,
     #[br(temp, seek_before = SeekFrom::Start(offsets_header.sound_entries_offset.into()))]
     entry_table_offset: u32,
-    #[br(
-        seek_before = SeekFrom::Start(entry_table_offset.into()),
-        assert(sound_entry_header.data_type == DataType::Ogg, "Only OGG supported"),
-    )]
+    #[br(seek_before = SeekFrom::Start(entry_table_offset.into()))]
     pub sound_entry_header: SoundEntryHeader,
-    #[br(temp, args(sound_entry_header.aux_chunk_count))]
-    _aux_chunk_devnull: AuxChunkDevNull,
-    pub ogg_seek_header: OggMetaHeader,
+    #[br(args { data_type: sound_entry_header.data_type })]
+    pub sound_data: SoundData,
 }
 
 #[binread]
@@ -168,6 +226,8 @@ struct ScdOffsetsHeader {
     #[br(pad_before = 0x6)]
     pub sound_entries_offset: u32,
 }
+
+const HAS_MARKER_CHUNK: u32 = 0x1;
 
 #[binread]
 #[derive(Debug)]
@@ -183,13 +243,26 @@ struct SoundEntryHeader {
     #[br(temp)]
     _loop_end: u32,
     #[br(temp)]
-    _first_frame_pos: u32,
-    #[br(pad_after = 2)]
-    pub aux_chunk_count: u16,
+    _pre_marker_sub_info_size: u32,
+    #[br(temp)]
+    flags: u32,
+    #[br(temp, if(flags & HAS_MARKER_CHUNK != 0), parse_with = skip_markers)]
+    _markers: (),
+}
+
+#[binrw::parser(reader)]
+fn skip_markers() -> BinResult<()> {
+    let _id = reader.read_le::<u32>()?;
+    let size = reader.read_le::<u32>()?;
+
+    // Seek to the end of the marker chunk, including the two fields already read.
+    reader.seek(SeekFrom::Current(i64::from(size) - 8))?;
+
+    Ok(())
 }
 
 #[binread]
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 #[br(repr(i32))]
 enum DataType {
     Empty = -1,
@@ -197,25 +270,16 @@ enum DataType {
     MsAdpcm = 0xC,
 }
 
-/// An adapter that jumps to the end of the aux chunk table.
-struct AuxChunkDevNull;
-
-impl BinRead for AuxChunkDevNull {
-    type Args<'a> = (u16,);
-
-    fn read_options<R: Read + Seek>(
-        reader: &mut R,
-        _: Endian,
-        (count,): Self::Args<'_>,
-    ) -> BinResult<Self> {
-        let mut position = reader.stream_position()?;
-        for _ in 0..count {
-            reader.seek(SeekFrom::Start(position + 4))?;
-            position += u64::from(reader.read_le::<u32>()?);
-        }
-        reader.seek(SeekFrom::Start(position))?;
-        Ok(AuxChunkDevNull)
-    }
+#[binread]
+#[derive(Debug)]
+#[br(import { data_type: DataType })]
+enum SoundData {
+    #[br(pre_assert(data_type == DataType::Empty))]
+    Empty,
+    #[br(pre_assert(data_type == DataType::Ogg))]
+    OggData(OggMetaHeader),
+    #[br(pre_assert(data_type == DataType::MsAdpcm))]
+    MsAdpcmData(MsAdpcmMetaHeader),
 }
 
 #[binread]
@@ -241,4 +305,20 @@ enum EncryptionType {
     None,
     VorbisHeaderXor = 0x2002,
     InternalTableXor = 0x2003,
+}
+
+#[binrw]
+#[derive(Debug)]
+struct MsAdpcmMetaHeader {
+    #[br(assert(format_tag == 0x2, "Only MS ADPCM is supported."))]
+    format_tag: u16,
+    channels: u16,
+    samples_per_second: i32,
+    avg_bytes_per_second: i32,
+    block_align: u16,
+    bits_per_sample: u16,
+    size: i16,
+    samples_per_block: u16,
+    num_coefficients: u16,
+    coefficients: [i16; 14],
 }

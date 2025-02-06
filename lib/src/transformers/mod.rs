@@ -7,7 +7,7 @@ use crate::error::LastLegendError;
 use crate::sqpath::{SqPath, SqPathBuf};
 use crate::transformers::change_format::ChangeFile;
 use crate::transformers::loop_file::LoopFile;
-use crate::transformers::scd_tf::{OggTransform, ScdTf};
+use crate::transformers::scd_tf::{ScdAudioTransform, ScdTf};
 
 mod change_format;
 mod loop_file;
@@ -36,6 +36,7 @@ pub enum TransformerImpl {
     ScdToOgg,
     LoopOgg,
     FlacToOgg,
+    ScdToWav,
 }
 
 impl<R: Read + Send> Transformer<R> for TransformerImpl {
@@ -45,7 +46,7 @@ impl<R: Read + Send> Transformer<R> for TransformerImpl {
         match self {
             Self::ScdToFlac => <ScdTf as Transformer<R>>::maybe_for(
                 &ScdTf {
-                    ogg_transform: OggTransform::Flac,
+                    audio_transform: ScdAudioTransform::Flac,
                 },
                 file,
             )
@@ -60,7 +61,7 @@ impl<R: Read + Send> Transformer<R> for TransformerImpl {
             .map(|e| Box::new(e) as Self::ForFile),
             Self::ScdToOgg => <ScdTf as Transformer<R>>::maybe_for(
                 &ScdTf {
-                    ogg_transform: OggTransform::Ogg,
+                    audio_transform: ScdAudioTransform::Ogg,
                 },
                 file,
             )
@@ -78,6 +79,13 @@ impl<R: Read + Send> Transformer<R> for TransformerImpl {
                     from_extension: "flac".to_string(),
                     to_extension: "ogg".to_string(),
                     to_ffmpeg_format: "ogg".to_string(),
+                },
+                file,
+            )
+            .map(|e| Box::new(e) as Self::ForFile),
+            Self::ScdToWav => <ScdTf as Transformer<R>>::maybe_for(
+                &ScdTf {
+                    audio_transform: ScdAudioTransform::Wav,
                 },
                 file,
             )
