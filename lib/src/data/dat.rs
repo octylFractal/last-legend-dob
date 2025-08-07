@@ -26,9 +26,9 @@ pub struct DatEntryHeader {
 impl DatEntryHeader {
     /// Given a [reader], positioned at the start of the header, get a new reader for the content.
     pub fn read_content<R: Read + Seek>(
-        &self,
+        &'_ self,
         mut reader: R,
-    ) -> std::io::Result<DatEntryContent<R>> {
+    ) -> std::io::Result<DatEntryContent<'_, R>> {
         let DatEntryHeaderBlocks::Binary(blocks) = &self.blocks;
         let stream_pos = reader.stream_position()?;
         Ok(DatEntryContent {
@@ -75,7 +75,7 @@ impl<R: Read + Seek> DatEntryContent<'_, R> {
         let header: DataBlockHeader = self
             .inner
             .read_le()
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+            .map_err(std::io::Error::other)?;
 
         assert_eq!(
             header.decompressed_size(),
@@ -126,7 +126,7 @@ impl<R: Read + Seek> Read for DatEntryContent<'_, R> {
         };
 
         let len = buf.len().min(output_buf.len());
-        (output_buf[..len]).copy_from_slice(&buf.content[buf.pos..(buf.pos + len)]);
+        output_buf[..len].copy_from_slice(&buf.content[buf.pos..(buf.pos + len)]);
         buf.pos += len;
         Ok(len)
     }

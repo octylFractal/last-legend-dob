@@ -13,20 +13,19 @@ name = "lldob"
 path = "src/main.rs"
 
 [profile.release]
-incremental = true
-lto = "thin"
+debug = true
 
 [dependencies]
-owo-colors = "4.0.0"
-log = "0.4.22"
-env_logger = "0.11.3"
+owo-colors = "4.2.2"
+log = "0.4.27"
+env_logger = "0.11.8"
 rayon = "1.10.0"
 last-legend-dob = { path = "./lib" }
 
 [dependencies.clap]
-version = "4.5.8"
+version = "4.5.43"
 features = ["derive"]
 
 [dependencies.strum]
-version = "0.26.3"
+version = "0.27.2"
 features = ["derive"]

@@ -22,7 +22,7 @@ pub trait Transformer<R> {
 
 pub trait TransformerForFile<R> {
     /// Get the file name used after the transformer is applied.
-    fn renamed_file(&self) -> Cow<SqPath>;
+    fn renamed_file(&'_ self) -> Cow<'_, SqPath>;
 
     /// Attempt to run the transformer against the [content].
     fn transform(&self, content: R) -> Result<Box<dyn Read + Send>, LastLegendError>;
@@ -95,7 +95,7 @@ impl<R: Read + Send> Transformer<R> for TransformerImpl {
 }
 
 impl<R: Read> TransformerForFile<R> for Box<dyn TransformerForFile<R>> {
-    fn renamed_file(&self) -> Cow<SqPath> {
+    fn renamed_file(&'_ self) -> Cow<'_, SqPath> {
         Box::as_ref(self).renamed_file()
     }
 

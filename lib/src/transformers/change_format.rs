@@ -37,7 +37,7 @@ pub struct ChangeFileForFile {
 }
 
 impl<R: Read + Send> TransformerForFile<R> for ChangeFileForFile {
-    fn renamed_file(&self) -> Cow<SqPath> {
+    fn renamed_file(&'_ self) -> Cow<'_, SqPath> {
         Cow::Owned(SqPathBuf::new(
             Path::new(self.file.as_str())
                 .with_extension(&self.extension)

@@ -33,7 +33,7 @@ pub struct LoopFileForFile {
 }
 
 impl<R: Read> TransformerForFile<R> for LoopFileForFile {
-    fn renamed_file(&self) -> Cow<SqPath> {
+    fn renamed_file(&'_ self) -> Cow<'_, SqPath> {
         Cow::Borrowed(&self.file)
     }
 

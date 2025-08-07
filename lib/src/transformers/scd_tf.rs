@@ -54,7 +54,7 @@ pub struct ScdTfForFile {
 }
 
 impl<R: Read> TransformerForFile<R> for ScdTfForFile {
-    fn renamed_file(&self) -> Cow<SqPath> {
+    fn renamed_file(&'_ self) -> Cow<'_, SqPath> {
         Cow::Owned(SqPathBuf::new(
             Path::new(self.file.as_str())
                 .with_extension(self.audio_transform.extension_str())

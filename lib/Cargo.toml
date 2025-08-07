@@ -6,24 +6,24 @@ license = "GPL-3.0-or-later"
 edition = "2021"
 
 [dependencies]
-thiserror = "1.0.61"
-binrw = "0.14.0"
+thiserror = "2.0.12"
+binrw = "0.15.0"
 bitvec = "1.0.1"
-chrono = "0.4.38"
-crc = "3.2.1"
-flate2 = "1.0.30"
-auto_enums = "0.8.5"
-tempfile = "3.10.1"
-log = "0.4.22"
-unicase = "2.7.0"
-owo-colors = "4.0.0"
-supports-color = "3.0.0"
-parking_lot = "0.12.3"
+chrono = "0.4.41"
+crc = "3.3.0"
+flate2 = "1.1.2"
+auto_enums = "0.8.7"
+tempfile = "3.20.0"
+log = "0.4.27"
+unicase = "2.8.1"
+owo-colors = "4.2.2"
+supports-color = "3.0.2"
+parking_lot = "0.12.4"
 
 [dependencies.strum]
-version = "0.26.3"
+version = "0.27.2"
 features = ["derive"]
 
 [dependencies.serde]
-version = "1.0.203"
+version = "1.0.219"
 features = ["derive"]

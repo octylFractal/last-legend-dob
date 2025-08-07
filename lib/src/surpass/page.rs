@@ -88,11 +88,12 @@ impl<R: Read + Seek> RowBufferIter<R> {
             .map_err(|e| LastLegendError::Io("Failed to seek to row".into(), e))?;
         let (data_size, count) = Self::read_row_header(reader)?;
         assert_eq!(count, 1, "default row should always be count == 1");
+        let data_usize = data_size as usize;
 
+        let mut buffer = vec![0; data_usize];
         reader
-            .bytes()
-            .take(data_size as usize)
-            .collect::<Result<_, std::io::Error>>()
+            .read_exact(&mut buffer[..])
+            .map(|_| buffer)
             .map_err(|e| LastLegendError::Io("Failed to read row buffer".into(), e))
     }
 }
