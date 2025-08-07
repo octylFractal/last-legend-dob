@@ -196,6 +196,8 @@ pub enum Language {
     ChineseSimplified,
     ChineseTraditional,
     Korean,
+    /// Used for the Taiwanese version of the game.
+    TraditionalChinese,
 }
 
 impl Language {
@@ -211,6 +213,7 @@ impl Language {
             Language::ChineseSimplified => "chs",
             Language::ChineseTraditional => "cht",
             Language::Korean => "ko",
+            Language::TraditionalChinese => "tc",
         };
         format!("exd/{}_{}_{}.exd", sheet_name, start_id, lang_code)
     }
